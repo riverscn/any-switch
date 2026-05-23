@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh repo *)",
+      "Bash(gh api *)",
+      "Bash(grep -iE '\\\\.rs$')",
+      "Read(//Users/river/**)",
+      "Bash(claude --version)",
+      "Bash(security find-generic-password *)"
+    ]
+  }
+}
