@@ -2,1495 +2,798 @@
 
 ## 1. 项目定位
 
-`switch-cli` 是一个基于命令行的状态切换工具，用于读取、展示、开启、关闭、切换和收敛任意可管理状态。
+`switch-cli` 是一个本地命令行工具，用来快速切换 Codex 和 Claude Code 的登录账号。
 
-它面向的状态不只包含布尔开关，也包括枚举、字符串、对象和配置集合。例如：
+它的实现方式不是调用第三方登录接口，而是管理这些 App 在用户目录下的配置文件：把不同账号对应的配置文件保存成具名快照，切换时用目标快照替换 App 当前使用的配置文件。
 
-- 系统代理：`off` / `http` / `socks` / `pac`
-- macOS 深色模式：`on` / `off`
-- Git 身份：`work` / `personal`
-- 项目环境变量：一组 key-value
-- Shell profile 片段：启用或禁用
-- 本地服务：`running` / `stopped`
-- Hosts 条目：存在或不存在
-- Feature flag：`enabled` / `disabled` / 分组配置
+MVP 只解决一个明确问题：
 
-项目的核心目标是提供一个统一的状态模型和命令体验，让用户可以用同一套方式管理跨操作系统、跨工具、跨项目的状态。
-
-## 2. 设计原则
-
-### 2.1 状态优先
-
-工具的核心不是“执行脚本”，而是管理状态。
-
-每个功能模块都必须尽量支持读取当前状态，并能把当前状态和期望状态进行比较。只有能读取状态，`toggle`、`status`、`diff`、`plan`、`apply --dry-run` 才是可信的。
-
-### 2.2 声明式和命令式并存
-
-用户需要两类使用方式：
-
-- 命令式：立即打开、关闭或切换某个状态。
-- 声明式：通过配置文件声明期望状态，然后执行 `apply` 进行收敛。
+```text
+我已经在 Codex / Claude Code 中登录过多个账号，希望用一条命令在这些账号之间切换。
+```
 
 示例：
 
 ```bash
-switch on macos.dark_mode
-switch off macos.dark_mode
-switch use git.identity work
-switch set proxy.system:mode http
-switch toggle git.identity
-switch apply --dry-run
-switch apply
+switch save codex work
+switch save codex personal
+switch use codex work
+
+switch save claude work
+switch use claude personal
+switch status
 ```
 
-`set` 命令的字段路径以 `:` 分隔模块名与字段，避免模块命名空间（含 `.`）与字段路径冲突。`on` / `off` 只对 `state_type == boolean` 的模块有效；对 enum / profile 状态请使用 `use` 或 `set`。
+## 2. 设计目标
 
-配置示例：
+### 2.1 MVP 目标
 
-```yaml
-modules:
-  proxy.system:
-    desired:
-      mode: http
-      http: http://127.0.0.1:7890
-      https: http://127.0.0.1:7890
+- 支持 Codex 和 Claude Code 两个内置 App。
+- Codex 和 Claude Code 都通过内部 Account Module 实现，而不是写死在 core 里。
+- 支持把当前登录状态保存为账号快照。
+- 支持列出账号、查看当前账号、切换账号。
+- 切换前能预览将要修改的文件。
+- 切换前自动备份当前配置。
+- 切换失败时尽量回滚到切换前状态。
+- 默认不解析、不展示、不改写 token 或 credential 字段。
+- 所有数据只保存在本机。
 
-  git.identity:
-    desired:
-      profile: work
+### 2.2 非目标
 
-  shell.env:
-    desired:
-      vars:
-        EDITOR: nvim
-        LANG: en_US.UTF-8
-```
+以下能力不进入 MVP：
 
-### 2.3 模块和插件分层
+- 通用状态管理框架。
+- 系统代理、Git 身份、Shell 环境变量、服务进程等非账号切换能力。
+- 运行时插件系统、外部模块安装和动态加载协议。
+- 项目目录配置、trust / allow 机制和 shell hook。
+- 远程同步、多机器同步、云备份。
+- Secret backend、Keychain、1Password、pass 等凭证解析能力。
+- 自动登录、刷新 token、校验账号是否仍可用。
+- 图形界面和 TUI。
 
-`module` 和 `plugin` 是两个不同概念：
+这些能力可以作为后续演进方向，但不能影响 MVP 的实现复杂度。
 
-- 模块定义一个状态域如何读取、计划、应用和验证。
-- 插件扩展 `switch-cli` 应用本身的能力，例如新增命令、同步配置、安装模块、提供 TUI、集成远程配置源。
+## 3. 设计原则
 
-模块负责“管理什么状态”。插件负责“扩展这个 CLI 能做什么”。
+### 3.1 账号快照优先
 
-### 2.4 跨平台能力下沉到 provider
+工具管理的基本单元是 `account snapshot`，不是单个 token 字段。
 
-核心层不直接写大量 OS 分支，而是通过 provider 处理平台差异。
+Codex / Claude Code 的配置文件格式可能变化。MVP 不假设内部 schema 稳定，只把配置文件作为 opaque bytes 处理。
 
-同一个模块可以有多个 provider：
+### 3.2 文件系统操作必须可预期
 
-```text
-proxy.system
-  darwin provider  -> networksetup / scutil
-  linux provider   -> gsettings / environment / systemd
-  windows provider -> PowerShell / Registry
-```
+所有写操作必须满足：
 
-模块对核心暴露统一协议，provider 对模块处理平台细节。
+- 写入前展示计划。
+- 写入前备份当前配置。
+- 写入时使用临时文件或临时目录。
+- 尽量使用原子替换。
+- 出错时明确提示已完成和未完成的动作。
 
-### 2.5 可预览、可回滚、可诊断
+### 3.3 默认不接触明文凭证语义
 
-修改系统状态的工具必须提供足够的安全边界：
+MVP 可以复制含凭证的配置文件，但不解析凭证、不打印凭证、不把凭证拆成字段管理。
 
-- `status`：查看实际状态。
-- `diff`：比较实际状态和期望状态。
-- `plan`：生成执行计划。
-- `apply --dry-run`：复用 plan 流程，只展示即将执行的动作，不产生副作用。
-- `doctor`：检查依赖命令、权限、配置格式和平台支持。
-- `revert`：在模块支持时恢复上一次变更。
+日志、history、status、diff 只能展示路径、大小、mtime、hash 前缀和账号名，不能展示文件内容。
 
-## 3. 参考项目
+### 3.4 内部 Account Module 先行
 
-每个项目只取一条核心借鉴：
+MVP 实现内部 Account Module 边界，但不实现外部模块协议。
 
-- [chezmoi](https://www.chezmoi.io/)：把用户配置视为 desired state，所有修改先 plan/diff 后 apply。
-- [asdf](https://asdf-vm.com/) / [mise](https://github.com/jdx/mise)：核心定义外部协议，第三方模块以任意语言实现，只要遵守 JSON 协议。
-- [direnv](https://direnv.net/)：按目录加载配置必须有信任机制（allow），环境变更生成 shell 可执行片段。
-- [Home Manager](https://nix-community.github.io/home-manager/) / [NixOS module](https://nixos.org/)：模块声明 schema、默认值、平台支持和依赖，配置合并规则显式。
-- [oclif](https://oclif.io/)：CLI 插件贡献命令 + hooks + topic 的生命周期模型。
-- [Starship](https://starship.rs/)：模块配置简洁稳定，内置与用户模块共用统一入口。
+第一版内置两个 Account Module：
+
+- `codex`
+- `claude`
+
+Account Module 负责声明需要管理哪些用户目录下的配置路径，以及提供 App 专属的 doctor 提示。core 只负责通用的保存快照、备份、替换、回滚和展示。
+
+这条边界的目的有两个：
+
+- 避免 core 写死 Codex / Claude Code 的分支逻辑。
+- 降低开源贡献新 App 的门槛，贡献者只需要新增一个内部 Account Module。
+
+### 3.5 按业务分 module，按能力分 core capability
+
+Module 按业务状态域划分，例如：
+
+- `codex`
+- `claude`
+- 后续可能的 `gemini`、`cursor`、`windsurf`
+
+底层能力不作为 module，而是由 core 统一提供 capability：
+
+- snapshot store
+- backup store
+- file replace
+- directory replace
+- lock
+- hash
+- permission handling
+- redacted output
+
+这样开源贡献者面对的是“我要支持哪个 App”，而不是“我要组合哪些底层能力”。同时，文件替换、权限、备份、回滚和脱敏这些安全边界保持在 core 内，避免每个业务模块各自实现一套。
+
+### 3.6 后续扩展保留但不预支
+
+设计允许以后新增 App，但 MVP 不实现插件协议。新增 App 的第一步是通过 PR 增加新的内部 Account Module，并补齐模块测试；当内置模块数量和维护成本明显上升后，再考虑 manifest、外部模块协议或插件生态。
 
 ## 4. 核心概念
 
-### 4.1 State
+### 4.1 App
 
-实际状态，也就是从系统、文件、命令或远程服务中读到的当前值。
+一个可被切换账号的应用。
 
-示例：
+MVP 固定支持：
 
-```json
-{
-  "module": "proxy.system",
-  "state": {
-    "mode": "off",
-    "http": null,
-    "https": null
-  },
-  "source": "darwin.networksetup"
-}
+```text
+codex
+claude
 ```
 
-### 4.2 Desired State
+### 4.2 Managed Path
 
-期望状态，来自用户配置或命令参数。
+App 当前登录状态依赖的配置路径。它可以是文件，也可以是目录。
 
-示例：
+示例结构：
 
-```json
-{
-  "module": "proxy.system",
-  "desired": {
-    "mode": "http",
-    "http": "http://127.0.0.1:7890",
-    "https": "http://127.0.0.1:7890"
-  }
-}
+```yaml
+apps:
+  codex:
+    managed_paths:
+      - path: ~/.codex/auth.json
+        kind: file
+        required: false
+
+  claude:
+    managed_paths:
+      - path: ~/.claude.json
+        kind: file
+        required: false
+      - path: ~/.claude/
+        kind: dir
+        required: false
 ```
 
-### 4.3 Plan
+上面的路径是 Account Module 配置示例，不是协议承诺。具体默认路径由内置 Account Module 维护，并允许用户在配置文件中覆盖。这样可以应对 Codex / Claude Code 未来调整配置文件位置。
 
-执行计划，描述为了从当前状态变更到期望状态，需要执行哪些动作。
+### 4.3 Account
 
-示例：
+用户给某个登录状态起的名字，例如：
+
+```text
+work
+personal
+oss
+```
+
+同一个账号名只在某个 App 内唯一。`codex/work` 和 `claude/work` 是两个独立快照。
+
+### 4.4 Snapshot
+
+某个账号对应的一组配置文件副本。
+
+快照必须包含 manifest：
 
 ```json
 {
-  "module": "proxy.system",
-  "actions": [
+  "schema_version": 1,
+  "app": "codex",
+  "account": "work",
+  "created_at": "2026-05-23T10:00:00Z",
+  "source": "save-current",
+  "files": [
     {
-      "type": "command",
-      "description": "Enable HTTP proxy for Wi-Fi",
-      "command": ["networksetup", "-setwebproxystate", "Wi-Fi", "on"]
+      "path": "~/.codex/auth.json",
+      "kind": "file",
+      "stored_as": "files/auth.json",
+      "sha256": "..."
     }
-  ],
-  "requires_admin": false,
-  "reversible": true
+  ]
 }
 ```
 
-### 4.4 Apply Result
+### 4.5 Active Config
 
-执行结果，记录动作是否成功、最终状态是什么、是否需要用户手工处理。
+App 当前实际读取的用户目录配置文件。
 
-示例：
-
-```json
-{
-  "module": "proxy.system",
-  "ok": true,
-  "changed": true,
-  "state": {
-    "mode": "http"
-  },
-  "warnings": []
-}
-```
-
-### 4.5 Scope
-
-作用域决定配置和状态的生效范围。MVP 只承诺两个：
-
-- `global`：用户全局配置（`~/.config/switch/config.yaml`）。
-- `project`：当前项目目录配置（`./.switch.yaml`），需要 trust 才会生效。
-
-后续扩展（不在 MVP 范围）：
-
-- `machine`：当前机器（与 user config 区分硬件相关字段）。
-- `os`：当前操作系统下的条件配置。
-- `profile`：用户自定义 profile，例如 `work` / `home` / `travel`。
-- `session`：当前 shell 会话内生效；需要 shell hook 配合，并入 Phase 3。
-
-## 5. 模块系统
-
-### 5.1 模块职责
-
-模块负责定义一个状态域的完整生命周期：
-
-- 声明模块元信息。
-- 声明配置 schema。
-- 读取当前状态。
-- 解析期望状态。
-- 生成变更计划。
-- 应用变更。
-- 验证变更结果。
-- 可选支持回滚。
-
-### 5.2 模块接口
-
-模块支持的操作 = manifest 中可声明的 capability，一一对应。MVP 必选 `detect / plan / apply`，可选 `revert / doctor`：
-
-| 操作       | 必选 | 说明 |
-|------------|------|------|
-| `metadata` | ✓    | 返回模块元信息（核心通过 manifest 已知，仅在动态发现场景调用）|
-| `schema`   | ✓    | 返回配置 schema |
-| `detect`   | ✓    | 读取当前状态 |
-| `plan`     | ✓    | 基于当前状态和期望状态生成计划 |
-| `apply`    | ✓    | 执行核心传入的 plan |
-| `doctor`   | 可选 | 检查依赖和平台支持 |
-| `revert`   | 可选 | 回滚最近一次变更 |
-
-`metadata` 和 `schema` 视为 manifest 静态信息的一部分，不计入 `capabilities` 数组；`capabilities` 只列运行时操作（`detect`/`plan`/`apply`/`doctor`/`revert`）。
-
-`status` 不是独立模块操作：CLI 的 `switch status` 调用 `detect` 后由核心格式化展示。
-
-### 5.3 模块类型
-
-#### Built-in Module
-
-随 `switch-cli` 发布的内置模块，适合覆盖高频、稳定、跨平台或基础能力。
-
-初期建议内置：
-
-- `shell.env`：环境变量和 shell 片段。
-- `git.identity`：Git 用户身份切换。
-- `proxy.system`：系统代理。
-- `app.config_file`：配置文件片段启用/禁用。
-- `service.process`：本地服务运行状态。
-
-#### External Module
-
-第三方模块，作为独立可执行文件安装。
-
-命名约定：
+`switch use <app> <account>` 的本质是：
 
 ```text
-switch-module-<name>
+account snapshot -> active config
 ```
 
-例如：
+### 4.6 Backup
+
+切换前从 active config 复制出来的安全副本。
+
+backup 不是账号快照，不应该出现在账号列表里。它只用于恢复上一次切换前的状态。
+
+### 4.7 Plan
+
+一次命令将要执行的文件操作。
+
+Plan 是只读预览，不包含文件内容：
 
 ```text
-switch-module-vscode
-switch-module-docker
-switch-module-raycast
+App: codex
+Target account: work
+
+Actions:
+  backup ~/.codex/auth.json
+  replace ~/.codex/auth.json from accounts/codex/work/files/auth.json
 ```
 
-### 5.4 模块 manifest
+## 5. 本地数据布局
 
-示例：
-
-```json
-{
-  "schema_version": "1",
-  "kind": "module",
-  "name": "proxy.system",
-  "version": "0.1.0",
-  "description": "Manage system proxy settings",
-  "entry": "switch-module-proxy",
-  "platforms": ["darwin", "linux", "windows"],
-  "capabilities": ["detect", "plan", "apply", "revert", "doctor"],
-  "state_type": "object",
-  "requires": {
-    "commands": {
-      "darwin": ["networksetup"],
-      "windows": ["powershell"]
-    }
-  }
-}
-```
-
-### 5.5 模块协议
-
-外部模块通过标准输入、标准输出和 JSON 与核心通信。
-
-调用示例：
-
-```bash
-switch-module-proxy detect --input -
-switch-module-proxy plan --input -
-switch-module-proxy apply --input -
-```
-
-输入示例：
-
-```json
-{
-  "schema_version": "1",
-  "module": "proxy.system",
-  "operation": "plan",
-  "context": {
-    "os": "darwin",
-    "arch": "arm64",
-    "scope": "global",
-    "cwd": "/Users/river/project"
-  },
-  "current": {
-    "mode": "off"
-  },
-  "desired": {
-    "mode": "http",
-    "http": "http://127.0.0.1:7890"
-  }
-}
-```
-
-输出示例：
-
-```json
-{
-  "ok": true,
-  "changed": true,
-  "plan": {
-    "actions": [
-      {
-        "type": "command",
-        "description": "Enable HTTP proxy",
-        "command": ["networksetup", "-setwebproxystate", "Wi-Fi", "on"]
-      }
-    ]
-  }
-}
-```
-
-### 5.6 状态类型
-
-模块不应该被限制为布尔开关。建议支持以下状态类型：
-
-- `boolean`：开/关。
-- `enum`：多选一状态。
-- `profile`：具名配置档，本质是带 payload 的多选一状态。
-- `string`：字符串值。
-- `number`：数值。
-- `object`：结构化配置。
-- `list`：列表型状态。
-- `set`：集合型状态。
-
-`toggle` 只对可明确取反或轮转的状态有效。
-
-模块需要在 schema 中声明 toggle 规则：
-
-```json
-{
-  "toggle": {
-    "type": "cycle",
-    "values": ["off", "http", "socks"]
-  }
-}
-```
-
-### 5.7 多选一状态
-
-多选一状态应该是一等模型，而不是把所有状态都压成 `on` / `off`。
-
-典型例子：
+默认目录：
 
 ```text
-proxy.system.mode     off / http / socks / pac
-git.identity.profile  work / personal / oss
-theme.current         light / dark / system
-node.version          20 / 22 / latest
+config: ~/.config/switch-cli/config.yaml
+data:   ~/.local/share/switch-cli/
+state:  ~/.local/state/switch-cli/
 ```
 
-#### 5.7.1 Enum
+macOS 可以继续使用这些 XDG 风格路径。Windows 后续再映射到 `%APPDATA%` / `%LOCALAPPDATA%`，不影响 MVP 的核心模型。
 
-`enum` 表示同一时间只能选择一个值。
-
-模块 schema 示例：
-
-```json
-{
-  "state_type": "enum",
-  "enum": {
-    "values": ["off", "http", "socks", "pac"],
-    "default": "off"
-  },
-  "toggle": {
-    "type": "cycle",
-    "values": ["off", "http"]
-  }
-}
-```
-
-命令示例：
-
-```bash
-switch options proxy.system          # 列出模块可选值
-switch use proxy.system http         # 选模块预定义选项，展开为完整 desired
-switch cycle proxy.system            # 按 toggle.cycle 顺序轮转
-switch set proxy.system:mode socks   # 只改单字段，<module>:<field.path>
-```
-
-`use` 与 `set` 的核心区别：`use` 选模块预定义选项并展开为完整 desired state；`set` 只改单个字段，不触发选项展开。例如 `switch use git.identity work` 会同时设置 name / email / signing_key，而 `switch set git.identity:email river@company.com` 只改 email。
-
-#### 5.7.2 Profile
-
-`profile` 是更实用的多选一：用户选择一个名字，模块把它展开成完整期望状态。
-
-示例：
-
-```yaml
-modules:
-  git.identity:
-    desired:
-      profile: work
-    profiles:
-      work:
-        name: River
-        email: river@company.com
-        signing_key:
-          secret_ref: env:GIT_SIGNING_KEY_WORK
-      personal:
-        name: River
-        email: river@example.com
-```
-
-命令：
-
-```bash
-switch options git.identity
-switch use git.identity personal
-```
-
-内部展开：
-
-```json
-{
-  "module": "git.identity",
-  "selected": "personal",
-  "desired": {
-    "name": "River",
-    "email": "river@example.com"
-  }
-}
-```
-
-#### 5.7.3 Toggle 和多选一的关系
-
-`toggle` 只适合两种情况：
-
-- `boolean` 状态，例如 `on -> off`。
-- 模块显式声明轮转规则，例如 `off -> http -> off`。
-
-对于超过两个候选值的 enum，不应该默认猜测用户想切到哪个值。必须通过 `use`、`set` 或显式 `cycle` 规则表达。
-
-示例：
-
-```json
-{
-  "toggle": {
-    "type": "cycle",
-    "values": ["work", "personal"]
-  }
-}
-```
-
-如果模块有三个以上 profile：
+数据目录：
 
 ```text
-work / personal / oss
+~/.local/share/switch-cli/
+  accounts/
+    codex/
+      work/
+        manifest.json
+        files/
+      personal/
+        manifest.json
+        files/
+    claude/
+      work/
+        manifest.json
+        files/
+  backups/
+    codex/
+      20260523T100000Z/
+        manifest.json
+        files/
+  locks/
 ```
 
-但没有声明 `cycle`，执行 `switch toggle git.identity` 应该失败并提示：
+状态目录：
 
 ```text
-git.identity has multiple options: work, personal, oss
-Use: switch use git.identity <option>
+~/.local/state/switch-cli/
+  history.jsonl
 ```
 
-## 6. 插件系统
-
-### 6.1 插件职责
-
-插件扩展 `switch-cli` 应用本身能力，而不是直接定义某个状态如何切换。
-
-MVP 协议承诺以下三类贡献点，其余能力（远程同步、TUI、telemetry、策略引擎等）由后续版本以新增 contributes 字段方式开放，未在 manifest schema 中出现的字段必须被核心忽略：
-
-- `commands`：新增子命令或命令别名。
-- `hooks`：在核心生命周期阶段插入回调。
-- `secret_backends`：贡献 secret URI scheme 的解析后端。
-
-### 6.2 插件 manifest
-
-示例：
-
-```json
-{
-  "schema_version": "1",
-  "kind": "plugin",
-  "name": "switch-plugin-tui",
-  "version": "0.1.0",
-  "description": "Interactive TUI for switch-cli",
-  "entry": "switch-plugin-tui",
-  "contributes": {
-    "commands": [
-      {
-        "name": "ui",
-        "description": "Open interactive UI"
-      }
-    ],
-    "hooks": ["before_apply", "after_apply"]
-  }
-}
-```
-
-插件也可以贡献 Secret backend。Secret backend 属于插件能力的一种，但 core 仍然负责 secret ref 解析调度、权限检查、脱敏、日志策略和传递给模块的方式。
-
-示例：
-
-```json
-{
-  "schema_version": "1",
-  "kind": "plugin",
-  "name": "switch-plugin-1password",
-  "version": "0.1.0",
-  "description": "Resolve op:// secret references through 1Password CLI",
-  "entry": "switch-plugin-1password",
-  "contributes": {
-    "secret_backends": [
-      {
-        "name": "op",
-        "schemes": ["op"],
-        "description": "Resolve op://vault/item/field references"
-      }
-    ]
-  }
-}
-```
-
-### 6.3 插件生命周期
-
-核心暴露 4 个阶段的前后置 hook，外加错误 hook：
-
-```text
-config_load  before / after
-detect       before / after
-plan         before / after
-apply        before / after
-on_error
-```
-
-Hook 契约：
-
-- **输入**：JSON via stdin，含阶段名、当前模块、context、对应阶段的中间结果（如 `after_detect` 含 state，`after_plan` 含 plan）。
-- **输出**：JSON via stdout，包含 `ok: bool` 与可选 `reason`。
-- **中止能力**：`before_*` hook 可以通过返回 `{"ok": false, "abort": true, "reason": "..."}` 中止本次主流程；`after_*` hook 不能中止。
-- **修改能力**：MVP 阶段 hook **不能** 修改 plan、desired state 或 detect 结果。修改路径留给后续 mutating-hook 提案。
-- **失败处理**：未声明 `abort: true` 的失败（非零退出、JSON 解析失败、stdout 缺 `ok`）记入日志和 `on_error`，但不阻断主流程，除非用户在配置中显式 `hooks.strict: true`。
-- **可选性**：核心流程不能依赖任何插件 hook 才能正常运行。
-
-### 6.4 插件和模块的边界
-
-判断标准：
-
-- 如果它定义某个状态如何被读写，它是模块。
-- 如果它扩展 CLI 使用体验或生命周期，它是插件。
-
-示例：
-
-```text
-proxy.system              -> module
-git.identity              -> module
-switch-plugin-tui         -> plugin
-switch-plugin-gist-sync   -> plugin
-switch-plugin-policy      -> plugin
-```
-
-## 7. 配置模型
-
-### 7.1 配置来源与合并顺序
-
-只用一张表表达：列表顺序 = 应用顺序，后者覆盖前者。
-
-| 顺序 | 来源 | 位置 / 说明 |
-|------|------|------|
-| 1 | 内置默认值 | 编译进二进制 |
-| 2 | 机器配置 | `~/.config/switch/machine.yaml`（macOS/Linux）<br>`%APPDATA%\switch\machine.yaml`（Windows） |
-| 3 | 用户配置 | `$XDG_CONFIG_HOME/switch/config.yaml`，回退 `~/.config/switch/config.yaml`<br>`%APPDATA%\switch\config.yaml`（Windows） |
-| 4 | 项目配置 | `./.switch.yaml`（trust 后生效）|
-| 5 | 环境变量覆盖 | `SWITCH_<MODULE>__<FIELD>=...` |
-| 6 | 命令行参数 | `--set <path>=<value>`、`--secret <path>=<ref>` 等 |
-
-### 7.2 配置结构
-
-示例：
-
-```yaml
-version: 1
-
-profile: work
-
-modules:
-  git.identity:
-    enabled: true
-    desired:
-      profile: work
-    profiles:
-      work:
-        name: River
-        email: river@company.com
-      personal:
-        name: River
-        email: river@example.com
-
-  proxy.system:
-    enabled: true
-    desired:
-      mode: http
-      http: http://127.0.0.1:7890
-      https: http://127.0.0.1:7890
-
-plugins:
-  switch-plugin-tui:
-    enabled: true
-```
-
-### 7.3 条件配置
-
-跨平台配置需要条件表达式。
-
-示例：
-
-```yaml
-modules:
-  proxy.system:
-    when:
-      os: [darwin, windows]
-    desired:
-      mode: http
-      http: http://127.0.0.1:7890
-```
-
-后续可以支持更复杂条件：
-
-```yaml
-when:
-  all:
-    - os: darwin
-    - hostname: river-mbp
-    - profile: work
-```
-
-### 7.4 配置合并规则
-
-来源顺序见 7.1。合并规则：
-
-- 标量值后者覆盖前者。
-- 对象深度合并。
-- 列表默认整体覆盖。
-- 模块可在 schema 中声明字段级合并策略（如 `merge: append`）。
-
-## 8. 命令设计
-
-### 8.1 命令清单
-
-带 `[MVP]` 标签的命令在第一版交付；其余按所属 Phase 出现。`set` 的路径用 `<module>:<field.path>` 形式，避免与模块命名空间（含 `.`）冲突。
-
-| 命令 | Phase | 说明 |
-|------|-------|------|
-| `switch status [<module>]` | MVP | 展示当前状态摘要 |
-| `switch list` | MVP | 列出已注册模块 |
-| `switch get <module>` | MVP | 输出单个模块当前状态（结构化） |
-| `switch on <module>` | MVP | 仅 boolean 模块；其余报错引导 `use` |
-| `switch off <module>` | MVP | 同上 |
-| `switch toggle <module>` | MVP | boolean 或显式声明 `toggle.cycle` 的模块 |
-| `switch options <module>` | MVP | 列出 enum / profile 模块的候选值 |
-| `switch use <module> <option>` | MVP | 选模块预定义选项，展开为完整 desired |
-| `switch cycle <module>` | MVP | 按 `toggle.cycle` 顺序轮转 |
-| `switch set <module>:<path> <value>` | MVP | 只改单字段 |
-| `switch plan` | MVP | 只读：生成并展示执行计划 |
-| `switch apply [--dry-run]` | MVP | 执行计划；`--dry-run` 复用 plan 流程，不产生副作用 |
-| `switch diff` | MVP | 比较当前状态与期望状态 |
-| `switch doctor [<module>]` | MVP | 检查依赖、权限、平台支持 |
-| `switch config init / path / edit / validate` | MVP | 配置文件管理 |
-| `switch trust [status|revoke]` | Phase 3 | 项目配置信任管理（见 11.2） |
-| `switch revert <module>` | Phase 2 | 调用模块 `revert` 能力 |
-| `switch config profile list / use <profile>` | Phase 3 | profile scope |
-| `switch module list / info / install / uninstall / update / doctor` | Phase 2 | 外部模块管理 |
-| `switch module test <path>` | Phase 2 | 开发者工具：跑 contract test（见 17.4） |
-| `switch plugin list / info / install / uninstall / update` | Phase 4 | 插件管理 |
-
-### 8.2 输出格式
-
-默认输出适合人读；机器消费在任意命令后加 `--json`：
-
-```bash
-switch status --json
-switch plan --json
-switch apply --json
-switch apply --dry-run --json
-```
-
-`switch plan` 是独立只读命令；`switch apply --dry-run` 与 `switch plan` 共用同一段计划生成流程（见 9.3），唯一区别是 `--dry-run` 的输出落在 apply 的人读/JSON 模板下，便于在准备执行前加上预览参数。
-
-## 9. 执行流程
-
-### 9.1 status
-
-```text
-load config
-resolve modules
-for each module:
-  check condition
-  select provider
-  detect current state
-  format result
-print status
-```
-
-### 9.2 diff
-
-```text
-load config
-resolve desired state
-detect current state
-compare current and desired
-print diff
-```
-
-### 9.3 plan / apply 共享流程
-
-`plan`、`apply --dry-run`、`apply` 共享同一段「准备阶段」，差别仅在执行阶段是否进入：
-
-```text
-[准备阶段 — 三者共用]
-load config
-validate config
-resolve enabled modules (apply filter by --module flags)
-detect current states
-build plans
-
-[输出与执行 — 按命令分支]
-switch plan              -> render plans (human/json)  → exit
-switch apply --dry-run   -> render plans (human/json)  → exit
-switch apply             -> render plans
-                            ask confirmation when needed
-                            execute plans
-                            detect final states
-                            write state history
-                            print summary
-```
-
-任何分支都不会在执行阶段重新生成 plan：传入 executor 的是准备阶段已构造的同一份 plan 对象。
-
-### 9.4 toggle
-
-```text
-load module
-detect current state
-resolve toggle rule
-derive desired state
-build plan
-apply plan
-detect final state
-print summary
-```
-
-### 9.5 use
-
-```text
-load module
-load options from schema or config profiles
-validate requested option
-expand option to desired state
-detect current state
-build plan
-apply plan
-detect final state
-print summary
-```
-
-## 10. 状态历史和回滚
-
-本地 jsonl 历史，用于审计与回滚。路径：
-
-- macOS / Linux：`$XDG_STATE_HOME/switch/history.jsonl`，回退 `~/.local/state/switch/history.jsonl`
-- Windows：`%LOCALAPPDATA%\switch\history.jsonl`
-
-并发写入：每次 apply 在内存中构造完整 `Vec<HistoryEntry>` 后，以 `O_APPEND` + 单次 write(2) 整块写入；同时对历史文件持文件锁（`flock` / `LockFileEx`）防止两条 `switch apply` 同时写入造成行撕裂。无锁的并发查看（如 status）始终读取 append-only 文件，不受影响。
-
-记录示例：
+`history.jsonl` 只记录操作元数据：
 
 ```json
 {
   "time": "2026-05-23T10:00:00Z",
-  "operation": "apply",
-  "module": "git.identity",
-  "before": { "profile": "personal" },
-  "desired": { "profile": "work" },
-  "after":   { "profile": "work" },
+  "operation": "use",
+  "app": "codex",
+  "account": "work",
+  "backup_id": "20260523T100000Z",
   "ok": true
 }
 ```
 
-回滚策略：
+## 6. 配置模型
 
-- 模块支持 `revert` 时优先调用。
-- 不支持但历史中保留了 previous state 时，核心尝试生成反向 plan（仅当所有字段都属于可安全反向应用的类型）。
-- 否则明确提示用户手工处理，不做猜测性回滚。
+MVP 配置只包含两个部分：
 
-## 11. 安全模型
-
-### 11.1 明确权限边界
-
-模块 manifest 必须声明可能需要的权限：
-
-```json
-{
-  "permissions": {
-    "filesystem": ["read_config", "write_config"],
-    "commands": ["networksetup"],
-    "secrets": ["proxy_token"],
-    "network": false,
-    "admin": false
-  }
-}
-```
-
-### 11.2 自动执行限制
-
-来自项目目录的 `.switch.yaml` 不应该默认自动执行。
-
-建议机制：
-
-```bash
-switch trust
-switch trust status
-switch trust revoke
-```
-
-信任记录与目录路径和配置文件 hash 绑定。
-
-### 11.3 命令执行
-
-模块返回的命令应该使用 argv 数组，而不是 shell 字符串。
-
-推荐：
-
-```json
-["networksetup", "-setwebproxystate", "Wi-Fi", "on"]
-```
-
-避免：
-
-```json
-"networksetup -setwebproxystate Wi-Fi on"
-```
-
-这样可以减少 shell 注入风险。
-
-### 11.4 Secret
-
-设计目标：配置中只存引用不存明文；核心统一解析、脱敏、控制传递阶段；模块按 schema 声明 secret 字段并按需获取值。延期能力（系统 keychain、1Password、插件 backend 等）参考附录 A。
-
-#### 11.4.1 概念
-
-- **secret ref**：配置中的引用，例如 `env:GITHUB_TOKEN`。
-- **secret backend**：解析 ref 的组件（MVP 只内置 `env:` 与 `cmd:`）。
-- **secret value**：运行时解析出来的明文。
-
-#### 11.4.2 配置格式
-
-显式对象（规范形式）：
-
-```yaml
-modules:
-  app.config_file:
-    desired:
-      auth:
-        token:
-          secret:
-            ref: env:APP_TOKEN
-            optional: false
-            encoding: text       # text | base64 | json，默认 text
-            expose: apply        # never | plan | apply，默认 apply
-```
-
-紧凑写法 `secret_ref: env:APP_TOKEN` 在配置加载后规范化为上述对象。`expose` 控制明文最早可在哪个阶段展开，`never` 表示模块只能拿到引用与存在性。
-
-#### 11.4.3 Secret ref URI
-
-```text
-env:NAME      从环境变量读取               [MVP]
-cmd:name      调用 allowlist 中的命令       [MVP]
-prompt:name   apply 时交互式输入            [MVP, 仅 TTY]
-file:/path    本地文件                      [Phase 5]
-keychain:...  macOS Keychain                [Phase 5]
-op://...      1Password CLI                 [Phase 5，插件 backend]
-```
-
-#### 11.4.4 Backend 接口
-
-```text
-metadata     返回 scheme 列表与能力声明
-doctor       检查依赖（如 op CLI 是否存在）
-exists       检查 secret 是否存在，不返回明文
-resolve      解析 secret 值
-fingerprint  可选；与 resolve 独立，返回加盐不可关联的指纹
-```
-
-`fingerprint` 是独立操作，不经过 `resolve`，因此 `diff` 比较 fingerprint 不构成 secret 解析（与 11.4.6 一致）。只有 backend 能提供加盐指纹时才默认启用，否则关闭以防止低熵 secret 被反推。
-
-#### 11.4.5 模块 schema 声明
-
-```json
-{
-  "properties": {
-    "auth": {
-      "type": "object",
-      "properties": {
-        "token": { "type": "string", "x-switch-secret": true, "x-switch-expose": "apply" }
-      }
-    }
-  }
-}
-```
-
-模块 manifest 同时声明 secret 权限（用于外部模块授权检查）：
-
-```json
-{
-  "permissions": {
-    "secrets": [
-      { "name": "app_token", "reason": "Authenticate to app", "required": true }
-    ]
-  }
-}
-```
-
-#### 11.4.6 解析时机
-
-| 阶段       | 是否解析 secret |
-|------------|------------------|
-| config load | 否，只解析 YAML/JSON 结构 |
-| validate   | 否，校验 ref 语法与 schema |
-| doctor     | 否（可选检查存在性，调用 backend.exists） |
-| status     | 否 |
-| diff       | 否；仅比较 ref 与 backend.fingerprint |
-| plan       | 默认否；仅当字段 `expose: plan` 时才解析必要 secret |
-| apply      | 是，按最小化原则解析 `expose: apply` 与 `expose: plan` 字段 |
-| history    | 否；只记录 ref / redacted / fingerprint |
-
-这避免普通 `switch status` 意外触发 keychain、1Password 或外部命令。
-
-#### 11.4.7 传递给模块的方式
-
-按字段 schema 的 `x-switch-expose` 与当前阶段决定模块收到什么：
-
-| 阶段允许？ | 模块收到 |
-|------------|----------|
-| 当前阶段 < schema 声明的最早展开阶段 | `{"ref": "env:X", "redacted": "********", "available": true}` |
-| 当前阶段 ≥ 最早展开阶段，且模块 manifest 声明了对应 secret 权限 | `{"value": "...明文...", "redacted": "********"}` |
-| 当前阶段允许，但模块未声明权限 | 报 `SecretPolicyError`，不调用模块 |
-
-不引入「空壳 handle」中间态：要么给引用 + 是否存在，要么给明文，决定权完全在 schema + manifest，不需要模块回调核心。
-
-模块约束：
-
-- 不得把明文写入 stdout、stderr、plan、history 或错误信息。
-- 模块返回值经过核心二次脱敏。
-- 外部模块未在 manifest 中声明对应 secret 权限时不会收到明文。
-
-#### 11.4.8 Diff、Plan、History 脱敏
-
-```text
-app.config_file.auth.token
-  before: secret_ref(env:OLD_TOKEN)
-  after:  secret_ref(env:APP_TOKEN)
-```
-
-ref 未变但指纹变化时（需 backend 支持加盐指纹）：
-
-```text
-app.config_file.auth.token
-  ref: env:APP_TOKEN
-  fingerprint: changed
-```
-
-History 仅保存 ref / redacted / fingerprint，三者均不构成明文。
-
-#### 11.4.9 缓存
-
-进程内内存缓存，TTL = 当前命令执行期间，key = `backend + ref`。不写磁盘、不入 crash report、不入 debug log。跨命令缓存留给 backend 自身（如 1Password CLI session）管理。
-
-#### 11.4.10 `cmd:` backend
-
-```yaml
-secrets:
-  commands:
-    app_token:
-      command: ["op", "read", "op://dev/app/token"]
-      timeout_ms: 3000
-      trim_trailing_newline: true
-
-modules:
-  app.config_file:
-    desired:
-      token:
-        secret_ref: cmd:app_token
-```
-
-规则：argv 数组（不允许 shell 字符串）；只能引用 allowlist 命名；stdout = value，stderr 仅诊断且经过脱敏；超时 / 非零退出 / 空输出转为 `SecretError`。如可能访问网络需在 `secrets.commands.<name>.network: true` 显式声明，`doctor` 与 `apply --dry-run` 展示。
-
-#### 11.4.11 `prompt:` 与 CLI 覆盖
-
-- `prompt:name`：apply 阶段交互输入，禁用回显，仅进程内存。非 TTY 环境必须用 CLI 覆盖。
-- CLI 覆盖只接受 ref：`switch apply --secret <module>:<field.path>=env:NAME`。
-- 明文覆盖 `--unsafe-secret-value` 仅供调试，且不进入 history / shell completion / 日志。
-
-#### 11.4.12 错误类型
-
-```text
-SecretRefError       ref 格式错误
-SecretBackendError   backend 不存在或不可用
-SecretNotFoundError  secret 不存在
-SecretAccessError    无权限读取
-SecretResolveError   解析失败
-SecretPolicyError    当前阶段不允许展开
-```
-
-错误输出脱敏：只能出现 ref 与原因，不允许出现 secret 值片段或长度。
-
-#### 11.4.13 MVP 范围
-
-实现：`env:` / `cmd:` / `prompt:` backend；schema 标记 secret 字段；status/diff/plan/history 完整脱敏；apply 按需解析；CLI ref 覆盖。
-
-延期到附录 A：系统 Keychain / Credential Manager / Secret Service、1Password / pass、插件贡献 backend、加密本地缓存、secret 写入与轮换。
-
-## 12. 平台适配
-
-### 12.1 平台识别
-
-核心 context 应包含：
-
-```json
-{
-  "os": "darwin",
-  "arch": "arm64",
-  "shell": "zsh",
-  "hostname": "river-mbp",
-  "user": "river",
-  "cwd": "/Users/river/project"
-}
-```
-
-### 12.2 Provider 选择
-
-选择顺序：
-
-```text
-用户显式指定 provider
-模块按当前 OS 推荐 provider
-第一个可用 provider
-失败并提示 doctor 信息
-```
-
-### 12.3 Provider 能力
-
-Provider 需要声明：
-
-- 支持的平台。
-- 依赖命令。
-- 是否需要管理员权限。
-- 是否支持 detect。
-- 是否支持 revert。
-- 已知限制。
-
-## 13. 错误处理
-
-错误应该分层：
-
-```text
-ConfigError       配置错误
-SchemaError       schema 校验失败
-ModuleError       模块执行失败
-ProviderError     平台 provider 失败
-PermissionError   权限不足
-DependencyError   缺少依赖命令
-SecretError       secret 引用、权限、backend 或解析失败
-StateDriftError   应用后状态和期望状态不一致
-```
-
-CLI 输出需要直接告诉用户：
-
-- 哪个模块失败。
-- 失败原因。
-- 可以执行什么命令诊断。
-- 是否发生了部分变更。
+- 内部 Account Module 的 managed path 覆盖。
+- CLI 行为偏好。
 
 示例：
 
-```text
-proxy.system failed: missing dependency "networksetup"
-Run: switch doctor proxy.system
-Changed: no
-```
-
-## 14. 技术选型
-
-核心采用 **Rust**。理由：单文件分发体验最好；类型系统适合表达 state / plan / schema；跨平台 syscall 与命令执行成熟；与「可靠 CLI」的目标契合。
-
-依赖选型：
-
-| 用途 | 库 |
-|------|----|
-| CLI 参数 | `clap` |
-| 序列化 | `serde` |
-| JSON schema | `schemars` + `jsonschema` |
-| 配置目录 | `directories` |
-| 进程调度 | `tokio` |
-| 子进程 | `tokio::process` |
-
-外部模块与插件通过 stdin/stdout + JSON 协议通信，不限制语言；Go、TypeScript、Python 等都可实现。Go / TypeScript 的选型讨论保留在附录 B 的 ADR 中，不再作为正文备选。
-
-## 15. 初期 MVP
-
-### 15.1 MVP 目标
-
-第一阶段只实现最小闭环：
-
-- 配置加载。
-- 模块注册。
-- 当前状态读取。
-- plan / dry-run。
-- apply。
-- 内置 2 到 3 个模块。
-- JSON 输出。
-
-### 15.2 MVP 内置模块
-
-选择标准：覆盖三类状态形态（boolean / enum / object），并尽量回避 OS-specific provider 的复杂度，让 MVP 聚焦核心模型而非 provider 抽象。
-
-- **`git.identity`**（enum / profile）：跨平台、无 admin、状态可读可写、能验证 profile 展开机制。
-- **`shell.env`**（object）：高频，验证对象状态、`set` 字段路径、深度合并；session scope 留到 Phase 3。
-- **`app.config_file`**（boolean / enum）：通过启用/禁用配置片段（include / symlink / `# BEGIN switch-cli` 块）验证 boolean toggle 与对象 diff，无需 admin、跨平台一致，最适合 MVP 验证 provider 抽象的最小路径。
-
-`proxy.system` 推迟到 Phase 2：它要求 3 个 OS provider、管理员权限路径以及独立的 provider 测试基础设施，对 MVP 来说成本与价值不匹配，应在核心稳定后再投入。
-
-### 15.3 MVP 命令
-
-MVP 命令与 `Phase` 标签见 8.1 一节，此处不再重复。
-
-### 15.4 暂缓能力
-
-以下能力不进入第一版（详见 20 章演进路线）：
-
-- `proxy.system` 等需要多 OS provider 的系统级模块。
-- 外部模块协议、模块安装/索引。
-- 项目目录自动 hook、`.switch.yaml` trust 流程。
-- 插件系统、TUI、远程同步。
-- 复杂策略引擎、签名校验、分布式配置同步。
-- 非 MVP secret backend（keychain、1Password、pass、Secret Service、插件 backend）。
-
-待核心 state / plan / apply 模型稳定后逐项开放。
-
-## 16. 推荐仓库结构
-
-如果使用 Rust：
-
-```text
-switch-cli/
-  Cargo.toml
-  crates/
-    switch-cli/
-      src/
-        main.rs
-        commands/
-    switch-core/
-      src/
-        config/
-        module/
-        plugin/
-        provider/
-        planner/
-        executor/
-        state/
-    switch-modules/
-      src/
-        git_identity/
-        shell_env/
-        proxy_system/
-  schemas/
-    module.schema.json
-    plugin.schema.json
-    config.schema.json
-  docs/
-    design.md
-```
-
-如果使用 Go：
-
-```text
-switch-cli/
-  go.mod
-  cmd/
-    switch/
-  internal/
-    config/
-    module/
-    plugin/
-    provider/
-    planner/
-    executor/
-    state/
-  modules/
-    builtin/
-  schemas/
-  docs/
-```
-
-## 17. 测试策略
-
-### 17.1 核心测试
-
-覆盖：
-
-- 配置加载和合并。
-- schema 校验。
-- module registry。
-- plan 生成。
-- dry-run 不产生副作用。
-- JSON 输出稳定性。
-
-### 17.2 模块测试
-
-每个模块至少测试：
-
-- detect 解析。
-- desired state 校验。
-- current -> desired 的 plan。
-- apply 后的状态验证。
-- 不支持平台时的错误。
-
-### 17.3 Provider 测试
-
-Provider 需要隔离真实系统。
-
-优先做：
-
-- command builder 测试。
-- fixture 输出解析测试。
-- mock executor 测试。
-
-真实系统集成测试只在特定 CI runner 或本机手动执行。
-
-### 17.4 Contract Test
-
-外部模块必须能通过协议测试，由开发者子命令 `switch module test <path>` 执行（命令已在 8.1 中登记为 Phase 2 开发者工具）：
-
-```bash
-switch module test ./switch-module-example
-```
-
-测试内容：
-
-- `metadata` 输出合法。
-- `schema` 输出合法。
-- `detect` 输出符合 schema。
-- `plan` 输出动作合法。
-- 错误输出格式稳定。
-
-## 18. 版本和兼容性
-
-需要为以下内容单独设版本：
-
-- CLI 版本。
-- 配置文件 schema 版本。
-- 模块协议版本。
-- 插件协议版本。
-- 每个模块自身版本。
-
-配置文件示例：
-
 ```yaml
 version: 1
+
+apps:
+  codex:
+    managed_paths:
+      - path: ~/.codex/auth.json
+        kind: file
+        required: false
+      - path: ~/.codex/config.toml
+        kind: file
+        required: false
+
+  claude:
+    managed_paths:
+      - path: ~/.claude.json
+        kind: file
+        required: false
+      - path: ~/.claude/
+        kind: dir
+        required: false
+        exclude:
+          - logs/**
+          - cache/**
+
+behavior:
+  confirm_before_switch: true
+  keep_backups: 20
 ```
 
-协议输入示例：
+合并规则：
 
-```json
-{
-  "schema_version": "1"
-}
-```
+- 内置默认值先加载。
+- 用户配置覆盖内置默认值。
+- 命令行参数覆盖用户配置。
 
-兼容策略：
+MVP 不支持项目级配置和环境变量批量覆盖。
 
-- patch 版本不能破坏协议。
-- minor 版本可以新增字段。
-- major 版本才允许破坏性变更。
-- 未识别字段默认忽略，除非 schema 明确禁止。
+## 7. 命令设计
 
-## 19. 用户体验细节
+### 7.1 MVP 命令
 
-### 19.1 状态展示
+| 命令 | 说明 |
+|------|------|
+| `switch apps` | 列出支持的 App |
+| `switch accounts [<app>]` | 列出已保存的账号快照 |
+| `switch status [<app>]` | 展示当前配置匹配哪个账号 |
+| `switch save <app> <account>` | 把 App 当前登录状态保存为账号快照 |
+| `switch use <app> <account>` | 切换到指定账号 |
+| `switch use <app> <account> --dry-run` | 只展示计划，不修改文件 |
+| `switch backup list [<app>]` | 查看自动备份 |
+| `switch restore <app> <backup-id>` | 从自动备份恢复 |
+| `switch doctor [<app>]` | 检查路径、权限、快照完整性 |
+| `switch config path` | 输出配置文件路径 |
 
-`STATE` / `DESIRED` 列只放状态值；漂移与多字段对象的应用进度分别由 `DRIFT` 与 `PROGRESS` 列承载，避免值与元状态混在一列。
+### 7.2 暂缓命令
+
+以下命令不进入 MVP：
+
+- `switch on/off/toggle`
+- `switch set`
+- `switch diff`
+- `switch plan`
+- `switch apply`
+- `switch module ...`
+- `switch plugin ...`
+- `switch trust ...`
+- `switch import <archive>`，以后如需从外部快照包导入再引入
+
+如果后续需要通用状态模型，再引入 `plan/apply/diff` 这一套命令。账号切换 MVP 只需要 `use --dry-run` 即可覆盖预览需求。
+
+`import` 不作为 MVP 命令名，因为它更像“从外部文件导入”。MVP 的实际动作是保存当前 App 的已登录配置，所以使用 `save`。
+
+### 7.3 输出格式
+
+默认输出面向人读：
 
 ```text
-MODULE             STATE       DESIRED     DRIFT  PROGRESS
-git.identity       work        work        no     100%
-app.config_file    disabled    enabled     yes    0%
-shell.env          object      object      yes    3/5
+codex
+  current: work
+  managed files: 2
+  drift: no
+
+claude
+  current: personal
+  managed files: 3
+  drift: yes
 ```
 
-- `STATE` / `DESIRED`：boolean/enum/profile 展示具体值；object/list 展示类型占位符，详细 diff 走 `switch diff`。
-- `DRIFT`：当前值与期望值是否一致，`yes` / `no` / `unknown`（detect 失败）。
-- `PROGRESS`：对象状态展示「已与期望一致的字段数 / 期望字段总数」；标量状态用百分比 0% / 100%。
-
-### 19.2 Apply 摘要
-
-```text
-Plan:
-  app.config_file
-    - enable include line in ~/.gitconfig
-    - write ~/.gitconfig.d/work.inc
-
-Summary:
-  changed: 1
-  unchanged: 2
-  failed: 0
-```
-
-### 19.3 失败展示
-
-```text
-Failed:
-  app.config_file
-    reason: target file "~/.gitconfig" is not writable
-    next: switch doctor app.config_file
-```
-
-### 19.4 命令名风险
-
-`switch` 是一个直观命令名，但在部分 shell 或语言上下文里可能有关键字冲突。发布时可以考虑：
-
-- 主命令仍叫 `switch`。
-- 同时提供短命令 `sw` 或 `swx`。
-- 文档中说明 alias 配置方式。
-
-## 20. 后续演进路线
-
-### Phase 1: Core
-
-- CLI 框架。
-- 配置加载。
-- 内置模块注册。
-- status / diff / plan / apply / dry-run。
-- JSON 输出。
-
-### Phase 2: Module Protocol
-
-- 外部模块 manifest。
-- 外部模块 JSON 协议。
-- 模块安装和卸载。
-- contract test。
-
-### Phase 3: Project Scope
-
-- `.switch.yaml`。
-- trust / allow 机制。
-- 按目录状态切换。
-- shell hook 原型。
-
-### Phase 4: Plugin System
-
-- 插件 manifest。
-- 插件命令注册。
-- 生命周期 hooks。
-- 插件配置。
-
-### Phase 5: Ecosystem
-
-- 模块索引。
-- 插件索引。
-- 签名和校验。
-- TUI。
-- 远程同步。
-- 高级 Secret backend，例如系统 Keychain、1Password、pass、Secret Service 和插件贡献的 backend。
-
-## 21. 当前建议结论
-
-`switch-cli` 最重要的设计取舍是：
-
-1. 核心围绕 state / desired state / plan / apply 建模。
-2. 模块负责具体状态，插件负责扩展 CLI。
-3. 跨平台差异由 provider 承担。
-4. 外部扩展优先使用进程 + JSON 协议，而不是语言级动态加载。
-5. 第一版先做少量高质量内置模块，把状态模型跑通。
-
-只要这几个边界保持清晰，后续无论是做系统设置、开发环境、项目 profile、自动 hook 还是插件生态，都能比较自然地扩展。
-
-## 附录 A：延期的 Secret 能力
-
-以下能力的协议设计草稿留作未来参考，但 MVP 不实现，正文不再展开。
-
-### A.1 系统 Keychain / Credential Manager / Secret Service
-
-后续可作为内置 backend：
-
-- `keychain:service/account`（macOS Security framework）
-- `credential-manager:target`（Windows `CredRead`）
-- `secret-service:collection/item#attribute`（freedesktop Secret Service）
-
-### A.2 插件贡献的 Secret backend
-
-core 维护 secret backend registry，插件通过 manifest 的 `contributes.secret_backends` 注册 scheme：
-
-```json
-{
-  "contributes": {
-    "secret_backends": [
-      {
-        "name": "op",
-        "schemes": ["op"],
-        "requires": { "commands": ["op"] }
-      }
-    ]
-  }
-}
-```
-
-调用协议（草稿）：
+所有 MVP 命令支持 `--json`：
 
 ```bash
-switch-plugin-1password secret resolve --input -
+switch status --json
+switch use codex work --dry-run --json
 ```
 
-```json
-{
-  "schema_version": "1",
-  "operation": "secret.resolve",
-  "ref": "op://dev/proxy/password",
-  "context": { "phase": "apply", "module": "app.config_file" }
+JSON 输出同样不能包含配置文件内容。
+
+## 8. 执行流程
+
+### 8.1 `switch save <app> <account>`
+
+```text
+load config
+resolve account module
+acquire app lock
+detect managed paths
+validate readable files
+copy active config into temp snapshot directory
+write snapshot manifest
+atomically publish snapshot
+append history
+release lock
+```
+
+规则：
+
+- 如果账号快照已存在，默认失败。
+- 使用 `--force` 才允许覆盖已有快照。
+- 保存时不修改 App 当前配置。
+- 不存在且 `required: false` 的路径跳过并记录在 manifest 中。
+- 不存在且 `required: true` 的路径导致保存失败。
+
+### 8.2 `switch status [<app>]`
+
+```text
+load config
+resolve account module
+detect active config
+hash active config
+compare with known snapshots
+print matched account or drift
+```
+
+状态结果：
+
+| 状态 | 含义 |
+|------|------|
+| `matched` | 当前配置与某个账号快照完全一致 |
+| `drifted` | 当前配置接近某个快照但文件 hash 不一致 |
+| `unknown` | 当前配置不匹配任何已保存账号 |
+| `missing` | App 配置文件不存在或不完整 |
+
+MVP 的 `drifted` 可以先实现为 `unknown`。后续再做更细的相似度判断。
+
+### 8.3 `switch use <app> <account>`
+
+```text
+load config
+resolve account module
+load target snapshot
+acquire app lock
+detect current active config
+build plan
+if dry-run: print plan and exit
+ask confirmation unless --yes
+create backup from active config
+stage target files in temp location
+replace active config
+verify active config hash
+append history
+release lock
+```
+
+替换成功的判断：
+
+- 所有目标 managed path 都存在。
+- active config 的 hash 与目标 snapshot manifest 一致。
+- 失败时能报告具体 path 和操作阶段。
+
+### 8.4 `switch restore <app> <backup-id>`
+
+`restore` 和 `use` 使用同一套替换流程，只是来源从账号快照换成 backup。
+
+restore 前也要再创建一个新的 backup，避免恢复操作覆盖当前状态后无法反悔。
+
+## 9. 文件操作协议
+
+### 9.1 锁
+
+每个 App 使用独立锁：
+
+```text
+~/.local/share/switch-cli/locks/<app>.lock
+```
+
+`save`、`use`、`restore` 必须持有锁。`status` 可以无锁读取，但如果读到不一致状态，应提示用户重试。
+
+### 9.2 文件替换
+
+文件替换流程：
+
+```text
+write target content to temp file in same directory
+fsync temp file
+preserve or set file permissions
+rename temp file over active file
+fsync parent directory when platform supports it
+```
+
+敏感文件默认权限：
+
+```text
+file: 0600
+dir:  0700
+```
+
+如果 active file 已存在，应尽量继承原文件权限。
+
+### 9.3 目录替换
+
+目录替换比文件替换更难。MVP 采用保守策略：
+
+```text
+copy snapshot dir to temp dir under same parent
+move current active dir to backup staging path
+move temp dir to active path
+verify
+if verify fails, move backup staging path back
+```
+
+目录 managed path 应尽量只覆盖确认为登录状态所需的目录。对缓存、日志、临时文件应使用 `exclude` 排除。
+
+### 9.4 Symlink
+
+默认不跟随指向用户目录外部的 symlink。
+
+规则：
+
+- managed path 本身是 symlink 时，`doctor` 必须展示真实路径。
+- 真实路径在用户 home 外时，MVP 默认拒绝写入。
+- 用户可以通过后续配置显式允许外部路径，但这不进入第一版。
+
+### 9.5 Hash
+
+hash 用于判断快照和当前配置是否一致。
+
+规则：
+
+- 文件 hash 使用 SHA-256。
+- 目录 hash 包含相对路径、文件类型和文件内容 hash。
+- hash 不包含 mtime。
+- status 只展示 hash 前缀，例如前 8 位。
+
+## 10. Account Module
+
+### 10.1 模块职责
+
+内部 Account Module 是编译进二进制的静态模块，不是运行时插件。
+
+Account Module 按业务划分，一个模块对应一个可切换账号的 App。它回答的是“管理哪个 App 的账号状态”，而不是“如何执行文件操作”。
+
+模块只负责声明：
+
+- App id。
+- 展示名。
+- 默认 managed paths。
+- 哪些路径是 required。
+- 目录路径的 exclude 规则。
+- doctor 检查提示。
+
+模块不负责：
+
+- 解析 token。
+- 调登录接口。
+- 刷新凭证。
+- 判断账号在服务端是否有效。
+- 执行保存、切换、备份和恢复。
+
+这些文件操作由 core 统一实现。
+
+### 10.2 Core capability 职责
+
+以下能力属于 core capability，不属于 Account Module：
+
+- 读取 active config。
+- 保存 account snapshot。
+- 创建 backup。
+- 文件原子替换。
+- 目录替换。
+- 文件锁。
+- hash 计算。
+- 权限继承和敏感文件默认权限。
+- history 写入。
+- 输出脱敏。
+
+这些能力必须集中实现，原因是它们决定了账号切换的安全性和一致性。业务模块不能绕过 core 直接修改用户配置文件。
+
+模块和 core 的关系：
+
+```text
+Account Module -> declares managed paths / excludes / doctor hints
+Core           -> performs save / use / status / backup / restore safely
+```
+
+内部接口应保持窄而稳定，概念上类似：
+
+```rust
+trait AccountModule {
+    fn id(&self) -> &'static str;
+    fn display_name(&self) -> &'static str;
+    fn default_managed_paths(&self) -> Vec<ManagedPath>;
+    fn doctor(&self, ctx: &Context) -> DoctorResult;
 }
 ```
 
-安全约束：stdout 只能是 JSON；stderr 由 core 二次脱敏；backend 不得绕过 schema 中的 `expose` 阶段约束；如访问网络需在 manifest 中声明。
-
-### A.3 加密本地缓存 / Secret 写入 / 轮换
-
-跨命令明文缓存（哪怕加密）、模块通过 backend 写入 secret、自动轮换 secret 都属于扩大攻击面与责任边界的能力。它们引入的复杂度足以单独立一个章节，待 MVP 稳定且有明确用例后再设计。
-
-### A.4 `file:` / `pass:` 等本地 backend
+MVP 使用静态 registry：
 
 ```text
-file:/absolute/path             本机私有文件，需要严格权限校验
-pass:path/to/item#field          pass 密码存储
+registry.register(CodexModule)
+registry.register(ClaudeModule)
 ```
 
-均属于扩展项，不进入 MVP。
+不做动态发现、安装、卸载、版本协商或子进程协议。
 
-## 附录 B：语言选型 ADR
+### 10.3 Codex Module
 
-### Context
+MVP 设计要求：
 
-设计早期考虑过 Rust、Go、TypeScript 三种核心语言。最终选 Rust 进入正文，但保留比较以便未来翻案：
+- 默认管理 Codex 在用户目录下的认证和必要配置文件。
+- 允许用户覆盖 managed paths。
+- `doctor` 输出当前检测到的 Codex 配置路径。
+- 未检测到默认路径时，提示先登录 Codex 或手动配置 managed paths。
 
-| 语言 | 优势 | 劣势 |
-|------|------|------|
-| Rust | 单文件分发；类型系统强；跨平台 syscall 成熟；适合可靠 CLI | 编译期相对慢；模块开发门槛较高 |
-| Go | 编译分发简单；标准库 OS 操作齐全；生态成熟 | 类型系统对 sum type / 状态机表达较弱 |
-| TypeScript | 插件生态成熟（oclif）；JSON schema 支持好 | 需要 Node runtime；单文件分发体验差 |
+文档不把某个具体 Codex 配置路径写成永久协议。Codex 的实际文件布局由实现中的 Codex Module 维护。
 
-### Decision
+### 10.4 Claude Code Module
 
-核心二进制使用 Rust；外部模块和插件以独立进程通过 JSON 协议交互，因此插件作者可以自由选择 Go / TypeScript / Python / Shell 等。
+MVP 设计要求：
 
-### Consequences
+- 默认管理 Claude Code 在用户目录下的认证和必要配置文件。
+- 支持文件和目录两种 managed path。
+- 对目录 managed path 默认排除缓存、日志和临时文件。
+- `doctor` 输出当前检测到的 Claude Code 配置路径。
 
-正面：发布物为单二进制，无运行时依赖；模块协议与核心语言解耦，生态保持开放。
+文档不把某个具体 Claude Code 配置路径写成永久协议。Claude Code 的实际文件布局由实现中的 Claude Code Module 维护。
 
-负面：核心贡献门槛比 Go 高；与 Node 生态既有工具的整合需要额外胶水。
+### 10.5 开源贡献边界
+
+开源后，新增 App 的主要贡献路径是提交一个新的内部 Account Module。
+
+建议源码组织：
+
+```text
+src/
+  account_modules/
+    mod.rs
+    codex.rs
+    claude.rs
+```
+
+每个模块文件只放该 App 的路径声明、exclude 规则和 doctor 提示，不放通用文件复制逻辑。
+
+一个新模块至少需要包含：
+
+- 默认 managed paths。
+- 默认 exclude 规则。
+- doctor 检查。
+- 路径展开和 home 目录边界测试。
+- fixture hash 测试。
+- 不输出 managed file 内容的测试。
+
+MVP 不要求贡献者理解插件生命周期、外部协议、安装路径或权限模型。等内部模块数量足够多、发布节奏开始受影响时，再把这套内部接口外化为 manifest 或外部模块协议。
+
+## 11. 安全和隐私
+
+### 11.1 不展示文件内容
+
+任何命令默认都不能打印 managed path 的文件内容。
+
+允许展示：
+
+- path
+- kind
+- exists
+- size
+- mtime
+- sha256 prefix
+- snapshot name
+- backup id
+
+不允许展示：
+
+- token
+- API key
+- session
+- cookie
+- 完整配置文件内容
+
+### 11.2 不解析 credential 字段
+
+MVP 不维护 secret schema。所有 credential 都只是 opaque file content。
+
+这降低功能复杂度，也避免工具承担凭证解析和脱敏的额外责任。
+
+### 11.3 备份保留
+
+默认保留最近 20 个 backup。
+
+清理 backup 必须满足：
+
+- 只清理 `switch-cli` 自己创建的 backup。
+- 不清理 account snapshot。
+- 清理动作可通过 `doctor` 或后续 `backup prune` 展示。
+
+MVP 可以先不自动清理，只在超过阈值时提示。
+
+### 11.4 并发
+
+同一 App 的写操作互斥。不同 App 可以并行切换。
+
+如果 Codex 或 Claude Code 正在运行，MVP 不强制终止进程。`doctor` 可以提示用户：运行中的 App 可能缓存旧账号状态，切换后可能需要重启 App。
+
+## 12. 错误类型
+
+| 错误 | 含义 |
+|------|------|
+| `AppNotFound` | 不支持的 App |
+| `AccountNotFound` | 指定账号快照不存在 |
+| `AccountExists` | 保存目标账号已存在 |
+| `ManagedPathMissing` | required managed path 不存在 |
+| `PermissionDenied` | 配置文件不可读或不可写 |
+| `SnapshotCorrupt` | 快照 manifest 和文件不一致 |
+| `BackupFailed` | 切换前备份失败 |
+| `ReplaceFailed` | 替换 active config 失败 |
+| `VerifyFailed` | 替换后 hash 校验失败 |
+| `LockBusy` | 另一个写操作正在执行 |
+
+错误输出应包含下一步建议：
+
+```text
+codex: switch failed at replace step
+path: ~/.codex/auth.json
+reason: permission denied
+backup: 20260523T100000Z
+next: switch restore codex 20260523T100000Z
+```
+
+## 13. MVP 验收标准
+
+MVP 完成的最低标准：
+
+1. 能保存当前 Codex 配置为 `codex/<account>`。
+2. 能保存当前 Claude Code 配置为 `claude/<account>`。
+3. 能在两个已保存账号之间切换。
+4. `status` 能识别当前配置匹配的账号。
+5. `use --dry-run` 能展示将要修改的路径。
+6. 每次 `use` 前都会创建 backup。
+7. `restore` 能从 backup 恢复。
+8. 日志和输出不会包含配置文件内容。
+9. 权限不足、路径不存在、快照损坏时有明确错误。
+10. 文档中明确说明：切换后可能需要重启 Codex / Claude Code。
+11. core 通过 Account Module registry 查找 App，不包含 Codex / Claude Code 专属分支。
+
+## 14. 后续演进
+
+只有当 MVP 稳定后，才考虑以下方向：
+
+### Phase 2: 更多 App
+
+- 增加 Gemini CLI、OpenAI CLI 或其他本地账号配置切换。
+- 通过 PR 增加新的内部 Account Module。
+- 增加模块测试模板和 fixture 约定。
+- 继续使用静态 registry，不引入运行时安装。
+
+### Phase 3: 体验增强
+
+- `switch rename <app> <old> <new>`
+- `switch remove <app> <account>`
+- `switch backup prune`
+- shell completion
+- 更好的 drift 展示
+
+### Phase 4: 同步和加密
+
+- 可选加密快照。
+- 可选跨机器同步。
+- 与系统 Keychain 集成。
+
+### Phase 5: 通用状态模型
+
+如果账号切换场景之外出现明确需求，再考虑引入通用状态管理能力：
+
+- state / desired / plan / apply
+- 外部模块协议
+- 插件系统
+- 项目 scope
+- trust / allow 机制
+
+外部模块协议只有在以下条件同时成立时才值得设计：
+
+- 内部 Account Module 数量已经足够多。
+- 第三方贡献者需要在不改 core 仓库的情况下发布模块。
+- 安装、权限、版本兼容和 contract test 的维护成本有明确收益。
+
+这些能力不应反向污染账号切换 MVP。
+
+## 15. 当前设计结论
+
+`switch-cli` 第一版应该是一个小而可靠的账号配置切换器，而不是通用自动化框架。
+
+最重要的边界是：
+
+1. 核心只做本地文件快照和切换。
+2. Codex / Claude Code 作为内部 Account Module 静态注册。
+3. 配置文件内容按 opaque bytes 处理。
+4. 每次写入前备份，每次切换后校验。
+5. 后续扩展先通过 PR 新增内部模块，不在 MVP 引入插件和外部模块生态。
