@@ -95,7 +95,8 @@ Steps:
 5. Runtime JSON sampling:
 
    - While Claude Code is running, monitor `~/.claude.json` writes and note
-     whether `oauthAccount` / `userID` are written with other fields.
+     whether `oauthAccount` is written with other fields, and whether top-level
+     `userID` changes independently.
    - Capture whether Claude writes minified JSON or pretty JSON, the indent
      width, trailing newline behavior, and top-level key order.
 

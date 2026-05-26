@@ -41,7 +41,9 @@ fn value_at_segments(root: &Value, segments: &[&str]) -> Result<Option<Value>> {
             };
             current = next;
         } else if let Some(token) = current.as_str() {
-            let payload = decode_jwt_payload(token)?;
+            let Ok(payload) = decode_jwt_payload(token) else {
+                return Ok(None);
+            };
             return value_at_segments(&payload, &segments[index..]);
         } else {
             return Ok(None);
@@ -130,5 +132,30 @@ mod tests {
 
         assert_eq!(identity["account_id"], "acct-a");
         assert_eq!(identity["email"], "a@b.c");
+    }
+
+    #[test]
+    fn opaque_string_on_nested_identity_path_is_treated_as_missing() {
+        let definition = IdentityDefinition {
+            handler: Some("json_paths".to_string()),
+            fields: [(
+                "account_id".to_string(),
+                crate::app_definitions::IdentityField {
+                    path: "$.tokens.access_token.account_id".to_string(),
+                    verify: "optional".to_string(),
+                },
+            )]
+            .into_iter()
+            .collect(),
+        };
+        let root = serde_json::json!({
+            "tokens": {
+                "access_token": "opaque-token"
+            }
+        });
+
+        let identity = extract_identity_from_definition(&root, &definition).unwrap();
+
+        assert!(identity.is_empty());
     }
 }

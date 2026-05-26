@@ -109,28 +109,10 @@ kinds:
         stored_as: keychain.json
         required: true
         platforms: [macos]
-        identity:
-          handler: json_paths
-          fields:
-            account_uuid:
-              path: $.claudeAiOauth.accessToken.accountUuid
-              verify: required
-            organization_uuid:
-              path: $.claudeAiOauth.accessToken.organizationUuid
-              verify: required
       - handler: file_capture
         path: ${CLAUDE_CONFIG_DIR:-~/.claude}/.credentials.json
         stored_as: credentials.json
         required: true
-        identity:
-          handler: json_paths
-          fields:
-            account_uuid:
-              path: $.claudeAiOauth.accessToken.accountUuid
-              verify: required
-            organization_uuid:
-              path: $.claudeAiOauth.accessToken.organizationUuid
-              verify: required
     cleanup_targets:
       - handler: json_remove_keys
         path: ~/.claude/settings.json
@@ -162,8 +144,4 @@ kinds:
       - handler: json_subtree
         path: ~/.claude.json
         json_path: $.oauthAccount
-        requires_app_stopped: true
-      - handler: json_subtree
-        path: ~/.claude.json
-        json_path: $.userID
         requires_app_stopped: true

@@ -4,3 +4,4 @@
 .test-*
 manual-evidence-*.md
 .claude/settings.local.json
+.tmp

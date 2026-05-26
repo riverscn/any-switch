@@ -1,9 +1,13 @@
 # any-switch
 
-`any-switch` is a local profile/state switcher for AI CLI tools. The MVP is
-focused on Claude Code and OpenAI Codex profile switching while keeping the core
-model generic: app definitions describe targets, and trusted core handlers apply
-structured profile records to local files.
+`any-switch` is a local app profile/state switcher. It is not limited to AI CLI
+tools: app definitions describe targets, and trusted core handlers apply
+structured profile records to local files, structured JSON/TOML subtrees, and
+secret stores.
+
+The current MVP ships built-in definitions for Claude Code and OpenAI Codex
+because their credential and state switching flows exercise the hardest parts of
+the core model first.
 
 The design document is in [docs/design.md](docs/design.md). Current acceptance
 evidence is tracked in [docs/acceptance.md](docs/acceptance.md), with real-app

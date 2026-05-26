@@ -116,7 +116,49 @@ fn codex_oauth_import_use_and_writeback() {
 }
 
 #[test]
-fn codex_import_rejects_auth_without_valid_mode_when_store_is_implicit() {
+fn codex_auto_import_uses_chatgpt_auth_mode_even_when_config_has_model_fields() {
+    let cwd = std::env::current_dir().unwrap();
+    let switch_home = tempfile::Builder::new()
+        .prefix(".test-switch-")
+        .tempdir_in(&cwd)
+        .unwrap();
+    let codex_home = tempfile::Builder::new()
+        .prefix(".test-codex-")
+        .tempdir_in(&cwd)
+        .unwrap();
+    fs::create_dir_all(codex_home.path()).unwrap();
+    fs::write(
+        codex_home.path().join("config.toml"),
+        r#"
+model = "gpt-5-codex"
+model_provider = "openai"
+"#,
+    )
+    .unwrap();
+    write_codex_oauth(codex_home.path(), "acct-a", "refresh-a");
+
+    Command::cargo_bin("any-switch")
+        .unwrap()
+        .env("ANY_SWITCH_HOME", switch_home.path())
+        .env("CODEX_HOME", codex_home.path())
+        .env("ANY_SWITCH_SKIP_PROCESS_PROBE", "1")
+        .args(["import-current", "codex", "personal"])
+        .assert()
+        .success()
+        .stdout(contains("imported codex-personal"));
+
+    Command::cargo_bin("any-switch")
+        .unwrap()
+        .env("ANY_SWITCH_HOME", switch_home.path())
+        .env("CODEX_HOME", codex_home.path())
+        .args(["show", "codex-personal"])
+        .assert()
+        .success()
+        .stdout(contains("kind: oauth_capture"));
+}
+
+#[test]
+fn codex_import_accepts_legacy_api_key_without_mode_when_store_is_implicit() {
     let cwd = std::env::current_dir().unwrap();
     let switch_home = tempfile::Builder::new()
         .prefix(".test-switch-")
@@ -142,9 +184,66 @@ fn codex_import_rejects_auth_without_valid_mode_when_store_is_implicit() {
         .env("ANY_SWITCH_SKIP_PROCESS_PROBE", "1")
         .args(["import-current", "codex", "legacy"])
         .assert()
-        .failure()
-        .stderr(contains("ImportAmbiguous"))
-        .stderr(contains("no valid auth_mode"));
+        .success()
+        .stdout(contains("imported codex-legacy"));
+
+    Command::cargo_bin("any-switch")
+        .unwrap()
+        .env("ANY_SWITCH_HOME", switch_home.path())
+        .env("CODEX_HOME", codex_home.path())
+        .args(["show", "codex-legacy"])
+        .assert()
+        .success()
+        .stdout(contains("kind: file_template"));
+}
+
+#[test]
+fn codex_import_accepts_legacy_api_key_without_mode_even_when_config_has_model_fields() {
+    let cwd = std::env::current_dir().unwrap();
+    let switch_home = tempfile::Builder::new()
+        .prefix(".test-switch-")
+        .tempdir_in(&cwd)
+        .unwrap();
+    let codex_home = tempfile::Builder::new()
+        .prefix(".test-codex-")
+        .tempdir_in(&cwd)
+        .unwrap();
+    fs::write(
+        codex_home.path().join("auth.json"),
+        serde_json::to_vec_pretty(&serde_json::json!({
+            "OPENAI_API_KEY": "sk-legacy-without-mode"
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    fs::write(
+        codex_home.path().join("config.toml"),
+        r#"
+model = "gpt-5.4"
+model_provider = "token"
+"#,
+    )
+    .unwrap();
+
+    Command::cargo_bin("any-switch")
+        .unwrap()
+        .env("ANY_SWITCH_HOME", switch_home.path())
+        .env("CODEX_HOME", codex_home.path())
+        .env("ANY_SWITCH_SKIP_PROCESS_PROBE", "1")
+        .args(["import-current", "codex", "legacy"])
+        .assert()
+        .success()
+        .stdout(contains("imported codex-legacy"));
+
+    Command::cargo_bin("any-switch")
+        .unwrap()
+        .env("ANY_SWITCH_HOME", switch_home.path())
+        .env("CODEX_HOME", codex_home.path())
+        .args(["show", "codex-legacy"])
+        .assert()
+        .success()
+        .stdout(contains("kind: file_template"))
+        .stdout(contains("model_provider: token"));
 }
 
 #[test]
@@ -182,7 +281,7 @@ fn codex_import_rejects_mixed_chatgpt_and_api_key_auth() {
         .assert()
         .failure()
         .stderr(contains("ImportAmbiguous"))
-        .stderr(contains("auth_mode=chatgpt"));
+        .stderr(contains("forbidden string $.tokens.id_token"));
 }
 
 #[test]

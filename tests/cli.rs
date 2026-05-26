@@ -688,6 +688,64 @@ sed 's/model: gpt-5-codex/model: edited-model/' "$1" > "$1.next" && mv "$1.next"
     assert_eq!(leftover, 0);
 }
 
+#[cfg(unix)]
+#[test]
+fn edit_falls_back_to_vim_when_editor_env_is_missing() {
+    let switch_home = tempdir().unwrap();
+    let editor_dir = tempdir().unwrap();
+    let vim = editor_dir.path().join("vim");
+    fs::write(
+        &vim,
+        r#"#!/bin/sh
+/usr/bin/sed 's/model: gpt-5-codex/model: vim-fallback/' "$1" > "$1.next" && /bin/mv "$1.next" "$1"
+"#,
+    )
+    .unwrap();
+    let mut permissions = fs::metadata(&vim).unwrap().permissions();
+    permissions.set_mode(0o700);
+    fs::set_permissions(&vim, permissions).unwrap();
+
+    Command::cargo_bin("any-switch")
+        .unwrap()
+        .env("ANY_SWITCH_HOME", switch_home.path())
+        .env("ANY_SWITCH_TEST_HOME", switch_home.path().parent().unwrap())
+        .env("TEST_API_KEY", "sk-test")
+        .args([
+            "add",
+            "codex",
+            "fallback-edit",
+            "--kind",
+            "file_template",
+            "--field",
+            "model=gpt-5-codex",
+            "--secret-field",
+            "api_key=@env:TEST_API_KEY",
+        ])
+        .assert()
+        .success();
+
+    Command::cargo_bin("any-switch")
+        .unwrap()
+        .env("ANY_SWITCH_HOME", switch_home.path())
+        .env("ANY_SWITCH_TEST_HOME", switch_home.path().parent().unwrap())
+        .env("PATH", editor_dir.path())
+        .env_remove("VISUAL")
+        .env_remove("EDITOR")
+        .args(["edit", "codex-fallback-edit"])
+        .assert()
+        .success()
+        .stdout(contains("edited codex-fallback-edit"));
+
+    Command::cargo_bin("any-switch")
+        .unwrap()
+        .env("ANY_SWITCH_HOME", switch_home.path())
+        .env("ANY_SWITCH_TEST_HOME", switch_home.path().parent().unwrap())
+        .args(["show", "codex-fallback-edit"])
+        .assert()
+        .success()
+        .stdout(contains("vim-fallback"));
+}
+
 #[test]
 fn edit_rejects_immutable_field_changes() {
     let switch_home = tempdir().unwrap();
@@ -2323,7 +2381,7 @@ fn restore_claude_oauth_backup_restores_json_subtrees_not_whole_file() {
     let restored: serde_json::Value = serde_json::from_str(&restored_text).unwrap();
     assert_eq!(restored["oauthAccount"]["accountUuid"], "acct-a");
     assert_eq!(restored["oauthAccount"]["organizationUuid"], "org-a");
-    assert_eq!(restored["userID"], "user-a");
+    assert_eq!(restored["userID"], "user-b");
     assert_eq!(restored["before"], "keep");
     assert_eq!(restored["between"]["nested"], true);
     assert_eq!(restored["after"], "keep");
@@ -2493,7 +2551,7 @@ fn restore_target_rolls_back_and_clears_pending_when_apply_fails() {
 }
 
 #[test]
-fn claude_import_rejects_credential_identity_mismatch() {
+fn claude_import_uses_oauth_account_identity_when_credentials_are_opaque() {
     let cwd = std::env::current_dir().unwrap();
     let home = tempfile::Builder::new()
         .prefix(".test-home-")
@@ -2512,13 +2570,24 @@ fn claude_import_rejects_credential_identity_mismatch() {
         .args([
             "import-current",
             "claude",
-            "mismatch",
+            "opaque",
             "--kind",
             "oauth_capture",
         ])
         .assert()
-        .failure()
-        .stderr(contains("SourceInconsistent"));
+        .success()
+        .stdout(contains("imported claude-opaque"));
+
+    Command::cargo_bin("any-switch")
+        .unwrap()
+        .env("HOME", home.path())
+        .env("ANY_SWITCH_TEST_HOME", home.path())
+        .env("ANY_SWITCH_HOME", &switch_home)
+        .args(["show", "claude-opaque"])
+        .assert()
+        .success()
+        .stdout(contains("account_uuid: acct-a"))
+        .stdout(contains("organization_uuid: org-a"));
 }
 
 #[cfg(target_os = "macos")]
@@ -2616,7 +2685,7 @@ fn claude_import_uses_claude_config_dir_for_file_backed_credentials() {
 }
 
 #[test]
-fn claude_status_and_writeback_detect_credential_identity_mismatch() {
+fn claude_status_and_writeback_detect_oauth_account_identity_mismatch() {
     let cwd = std::env::current_dir().unwrap();
     let home = tempfile::Builder::new()
         .prefix(".test-home-")
@@ -2652,7 +2721,7 @@ fn claude_status_and_writeback_detect_credential_identity_mismatch() {
         .assert()
         .success();
 
-    write_claude_credentials(home.path(), "acct-b", "org-b", "refresh-b");
+    write_claude_json(home.path(), "acct-b", "org-b", "user-b", "changed");
     Command::cargo_bin("any-switch")
         .unwrap()
         .env("HOME", home.path())
@@ -2673,8 +2742,8 @@ fn claude_status_and_writeback_detect_credential_identity_mismatch() {
         .assert()
         .success()
         .stdout(contains("identity_check\twarning"))
-        .stdout(contains("credential source identity does not match"))
-        .stdout(is_match("refresh-b").unwrap().not());
+        .stdout(contains("restored identity does not match"))
+        .stdout(is_match("refresh-a").unwrap().not());
 
     Command::cargo_bin("any-switch")
         .unwrap()

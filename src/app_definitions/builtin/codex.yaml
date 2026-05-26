@@ -53,11 +53,15 @@ kinds:
             "auth_mode": "apikey",
             "OPENAI_API_KEY": "{{ fields.api_key }}"
           }
-        import_json_matches:
-          $.auth_mode: apikey
+        import_json_required_strings:
+          - $.OPENAI_API_KEY
+        import_json_forbidden_strings:
+          - $.tokens.access_token
+          - $.tokens.id_token
+          - $.tokens.refresh_token
         import_json_fields:
           api_key: $.OPENAI_API_KEY
-        import_unmatched_error: "ImportAmbiguous: auth target exists but has no valid auth_mode import rule"
+        import_unmatched_error: "ImportAmbiguous: auth target exists but does not match any Codex import rule\n\nNext steps:\n  - Run `any-switch doctor codex` to inspect the live auth summary.\n  - For ChatGPT OAuth, ensure auth.json has auth_mode=chatgpt and tokens.refresh_token.\n  - For API-key mode, ensure auth.json has a non-empty OPENAI_API_KEY and no tokens object.\n  - If Codex is using an OS credential store, switch Codex back to file-backed credentials before importing."
       - handler: toml_managed_paths
         path: ${CODEX_HOME:-~/.codex}/config.toml
         toml_paths:
