@@ -42,5 +42,5 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           files: |
-            switch-cli-${{ github.ref_name }}-${{ matrix.target }}.tar.gz
-            switch-cli-${{ github.ref_name }}-${{ matrix.target }}.tar.gz.sha256
+            any-switch-${{ github.ref_name }}-${{ matrix.target }}.tar.gz
+            any-switch-${{ github.ref_name }}-${{ matrix.target }}.tar.gz.sha256

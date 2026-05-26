@@ -247,7 +247,7 @@ pub fn ensure_capture_complete(paths: &Paths, profile: &Profile) -> Result<()> {
         let path = capture_blob_path(paths, &profile.id, &source.stored_as)?;
         if !path.exists() {
             return Err(anyhow!(
-                "CaptureMissing: profile {} is missing {}; run `switch-cli import-current {} <name>` on this machine to re-capture credentials for the current platform",
+                "CaptureMissing: profile {} is missing {}; run `any-switch import-current {} <name>` on this machine to re-capture credentials for the current platform",
                 profile.id,
                 source.stored_as,
                 profile.app
@@ -600,7 +600,7 @@ mod tests {
     #[test]
     fn rejects_capture_blob_symlink_escape() {
         let home = tempfile::tempdir().unwrap();
-        let switch_home = home.path().join(".switch-cli");
+        let switch_home = home.path().join(".any-switch");
         let paths = Paths {
             home: home.path().to_path_buf(),
             switch_home,

@@ -18,32 +18,32 @@ fn codex_oauth_import_use_and_writeback() {
     fs::create_dir_all(codex_home.path()).unwrap();
 
     write_codex_oauth(codex_home.path(), "acct-a", "refresh-a");
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
+        .env("ANY_SWITCH_HOME", switch_home.path())
         .env("CODEX_HOME", codex_home.path())
-        .env("SWITCH_CLI_SKIP_PROCESS_PROBE", "1")
+        .env("ANY_SWITCH_SKIP_PROCESS_PROBE", "1")
         .args(["import-current", "codex", "a", "--kind", "oauth_capture"])
         .assert()
         .success()
         .stdout(contains("imported codex-a"));
 
     write_codex_oauth(codex_home.path(), "acct-b", "refresh-b");
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
+        .env("ANY_SWITCH_HOME", switch_home.path())
         .env("CODEX_HOME", codex_home.path())
-        .env("SWITCH_CLI_SKIP_PROCESS_PROBE", "1")
+        .env("ANY_SWITCH_SKIP_PROCESS_PROBE", "1")
         .args(["import-current", "codex", "b", "--kind", "oauth_capture"])
         .assert()
         .success()
         .stdout(contains("imported codex-b"));
 
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
+        .env("ANY_SWITCH_HOME", switch_home.path())
         .env("CODEX_HOME", codex_home.path())
-        .env("SWITCH_CLI_SKIP_PROCESS_PROBE", "1")
+        .env("ANY_SWITCH_SKIP_PROCESS_PROBE", "1")
         .args(["use", "codex-a", "--yes"])
         .assert()
         .success()
@@ -52,11 +52,11 @@ fn codex_oauth_import_use_and_writeback() {
     write_codex_oauth(codex_home.path(), "acct-a", "refresh-a-rotated");
     let profiles_before_writeback =
         fs::read_to_string(switch_home.path().join("profiles.yaml")).unwrap();
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
+        .env("ANY_SWITCH_HOME", switch_home.path())
         .env("CODEX_HOME", codex_home.path())
-        .env("SWITCH_CLI_SKIP_PROCESS_PROBE", "1")
+        .env("ANY_SWITCH_SKIP_PROCESS_PROBE", "1")
         .args(["use", "codex-b", "--yes"])
         .assert()
         .success()
@@ -98,9 +98,9 @@ fn codex_oauth_import_use_and_writeback() {
     .unwrap();
     assert!(backup_manifest.contains("\"requires_app_stopped\": true"));
 
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
+        .env("ANY_SWITCH_HOME", switch_home.path())
         .env("CODEX_HOME", codex_home.path())
         .args(["status", "codex"])
         .assert()
@@ -135,11 +135,11 @@ fn codex_import_rejects_auth_without_valid_mode_when_store_is_implicit() {
     )
     .unwrap();
 
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
+        .env("ANY_SWITCH_HOME", switch_home.path())
         .env("CODEX_HOME", codex_home.path())
-        .env("SWITCH_CLI_SKIP_PROCESS_PROBE", "1")
+        .env("ANY_SWITCH_SKIP_PROCESS_PROBE", "1")
         .args(["import-current", "codex", "legacy"])
         .assert()
         .failure()
@@ -173,11 +173,11 @@ fn codex_import_rejects_mixed_chatgpt_and_api_key_auth() {
     )
     .unwrap();
 
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
+        .env("ANY_SWITCH_HOME", switch_home.path())
         .env("CODEX_HOME", codex_home.path())
-        .env("SWITCH_CLI_SKIP_PROCESS_PROBE", "1")
+        .env("ANY_SWITCH_SKIP_PROCESS_PROBE", "1")
         .args(["import-current", "codex", "mixed"])
         .assert()
         .failure()
@@ -217,11 +217,11 @@ trust_level = "trusted"
     .unwrap();
     write_codex_oauth(codex_home.path(), "acct-a", "refresh-a");
 
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
+        .env("ANY_SWITCH_HOME", switch_home.path())
         .env("CODEX_HOME", codex_home.path())
-        .env("SWITCH_CLI_SKIP_PROCESS_PROBE", "1")
+        .env("ANY_SWITCH_SKIP_PROCESS_PROBE", "1")
         .args(["import-current", "codex", "toml", "--kind", "oauth_capture"])
         .assert()
         .success();
@@ -254,20 +254,20 @@ trust_level = "changed"
     )
     .unwrap();
 
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
+        .env("ANY_SWITCH_HOME", switch_home.path())
         .env("CODEX_HOME", codex_home.path())
-        .env("SWITCH_CLI_SKIP_PROCESS_PROBE", "1")
+        .env("ANY_SWITCH_SKIP_PROCESS_PROBE", "1")
         .args(["detach", "codex"])
         .assert()
         .success();
 
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
+        .env("ANY_SWITCH_HOME", switch_home.path())
         .env("CODEX_HOME", codex_home.path())
-        .env("SWITCH_CLI_SKIP_PROCESS_PROBE", "1")
+        .env("ANY_SWITCH_SKIP_PROCESS_PROBE", "1")
         .args(["use", "codex-toml", "--yes"])
         .assert()
         .success();

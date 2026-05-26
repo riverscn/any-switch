@@ -51,10 +51,10 @@ fn doctor_reports_permission_warnings() {
         fs::set_permissions(&file, permissions).unwrap();
     }
 
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
-        .env("SWITCH_CLI_TEST_HOME", switch_home.path().parent().unwrap())
+        .env("ANY_SWITCH_HOME", switch_home.path())
+        .env("ANY_SWITCH_TEST_HOME", switch_home.path().parent().unwrap())
         .args(["doctor"])
         .assert()
         .success()
@@ -71,17 +71,17 @@ fn doctor_reports_permission_warnings() {
 #[test]
 fn doctor_warns_when_switch_home_is_under_cloud_sync_root() {
     let home = tempdir().unwrap();
-    let switch_home = home.path().join("Dropbox").join(".switch-cli");
+    let switch_home = home.path().join("Dropbox").join(".any-switch");
 
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_TEST_HOME", home.path())
-        .env("SWITCH_CLI_HOME", &switch_home)
+        .env("ANY_SWITCH_TEST_HOME", home.path())
+        .env("ANY_SWITCH_HOME", &switch_home)
         .args(["doctor"])
         .assert()
         .success()
         .stdout(contains(
-            "profiles.yaml secret-leak surface\twarning: SWITCH_CLI_HOME appears to be under a cloud sync directory",
+            "profiles.yaml secret-leak surface\twarning: ANY_SWITCH_HOME appears to be under a cloud sync directory",
         ));
 }
 
@@ -97,9 +97,9 @@ fn doctor_reports_backup_usage() {
         .tempdir_in(&cwd)
         .unwrap();
 
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
+        .env("ANY_SWITCH_HOME", switch_home.path())
         .env("CODEX_HOME", codex_home.path())
         .env("TEST_API_KEY", "sk-test")
         .args([
@@ -116,18 +116,18 @@ fn doctor_reports_backup_usage() {
         .assert()
         .success();
 
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
+        .env("ANY_SWITCH_HOME", switch_home.path())
         .env("CODEX_HOME", codex_home.path())
-        .env("SWITCH_CLI_SKIP_PROCESS_PROBE", "1")
+        .env("ANY_SWITCH_SKIP_PROCESS_PROBE", "1")
         .args(["use", "codex-backup-report", "--yes"])
         .assert()
         .success();
 
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
+        .env("ANY_SWITCH_HOME", switch_home.path())
         .env("CODEX_HOME", codex_home.path())
         .args(["doctor", "codex"])
         .assert()
@@ -136,9 +136,9 @@ fn doctor_reports_backup_usage() {
         .stdout(contains("inode_bytes="))
         .stdout(contains("logical_bytes="));
 
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
+        .env("ANY_SWITCH_HOME", switch_home.path())
         .args(["backup", "list", "codex", "--json"])
         .assert()
         .success()
@@ -182,10 +182,10 @@ fn doctor_warns_when_backup_usage_exceeds_soft_limit() {
 "#,
     )
     .unwrap();
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
-        .env("SWITCH_CLI_TEST_HOME", switch_home.path().parent().unwrap())
+        .env("ANY_SWITCH_HOME", switch_home.path())
+        .env("ANY_SWITCH_TEST_HOME", switch_home.path().parent().unwrap())
         .args(["doctor"])
         .assert()
         .success()
@@ -227,10 +227,10 @@ fn doctor_backup_usage_ignores_unsafe_manifest_stored_as_paths() {
     )
     .unwrap();
 
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
-        .env("SWITCH_CLI_TEST_HOME", switch_home.path().parent().unwrap())
+        .env("ANY_SWITCH_HOME", switch_home.path())
+        .env("ANY_SWITCH_TEST_HOME", switch_home.path().parent().unwrap())
         .args(["doctor"])
         .assert()
         .success()
@@ -250,9 +250,9 @@ fn doctor_app_reports_process_and_active_target() {
         .tempdir_in(&cwd)
         .unwrap();
 
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
+        .env("ANY_SWITCH_HOME", switch_home.path())
         .env("CODEX_HOME", codex_home.path())
         .env("TEST_API_KEY", "sk-test")
         .args([
@@ -269,21 +269,21 @@ fn doctor_app_reports_process_and_active_target() {
         .assert()
         .success();
 
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
+        .env("ANY_SWITCH_HOME", switch_home.path())
         .env("CODEX_HOME", codex_home.path())
-        .env("SWITCH_CLI_SKIP_PROCESS_PROBE", "1")
+        .env("ANY_SWITCH_SKIP_PROCESS_PROBE", "1")
         .args(["use", "codex-doctor", "--yes"])
         .assert()
         .success();
 
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
+        .env("ANY_SWITCH_HOME", switch_home.path())
         .env("CODEX_HOME", codex_home.path())
         .env(
-            "SWITCH_CLI_PROCESS_PROBE_FIXTURE",
+            "ANY_SWITCH_PROCESS_PROBE_FIXTURE",
             "5150\tSun May 24 21:00:00 2026\t/usr/local/bin/codex",
         )
         .args(["doctor", "codex"])
@@ -301,11 +301,11 @@ fn doctor_app_reports_process_and_active_target() {
 fn doctor_warns_instead_of_failing_when_process_probe_errors() {
     let switch_home = tempdir().unwrap();
 
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
-        .env("SWITCH_CLI_TEST_HOME", switch_home.path().parent().unwrap())
-        .env("SWITCH_CLI_PROCESS_PROBE_ERROR_FIXTURE", "ps denied")
+        .env("ANY_SWITCH_HOME", switch_home.path())
+        .env("ANY_SWITCH_TEST_HOME", switch_home.path().parent().unwrap())
+        .env("ANY_SWITCH_PROCESS_PROBE_ERROR_FIXTURE", "ps denied")
         .args(["doctor", "codex"])
         .assert()
         .success()
@@ -313,11 +313,11 @@ fn doctor_warns_instead_of_failing_when_process_probe_errors() {
             "processes\twarning: process probe fixture error: ps denied",
         ));
 
-    let output = Command::cargo_bin("switch-cli")
+    let output = Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
-        .env("SWITCH_CLI_TEST_HOME", switch_home.path().parent().unwrap())
-        .env("SWITCH_CLI_PROCESS_PROBE_ERROR_FIXTURE", "ps denied")
+        .env("ANY_SWITCH_HOME", switch_home.path())
+        .env("ANY_SWITCH_TEST_HOME", switch_home.path().parent().unwrap())
+        .env("ANY_SWITCH_PROCESS_PROBE_ERROR_FIXTURE", "ps denied")
         .args(["doctor", "codex", "--json"])
         .output()
         .unwrap();
@@ -356,11 +356,11 @@ fn doctor_reports_definition_driven_json_fields_and_stale_warnings() {
     )
     .unwrap();
 
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
+        .env("ANY_SWITCH_HOME", switch_home.path())
         .env("CODEX_HOME", codex_home.path())
-        .env("SWITCH_CLI_SKIP_PROCESS_PROBE", "1")
+        .env("ANY_SWITCH_SKIP_PROCESS_PROBE", "1")
         .args(["doctor", "codex"])
         .assert()
         .success()
@@ -430,11 +430,11 @@ doctor:
     )
     .unwrap();
 
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
+        .env("ANY_SWITCH_HOME", switch_home.path())
         .env(
-            "SWITCH_CLI_PROCESS_PROBE_FIXTURE",
+            "ANY_SWITCH_PROCESS_PROBE_FIXTURE",
             "6060\tSun May 24 21:00:00 2026\t/opt/widget-runner",
         )
         .args(["doctor", "widget"])
@@ -446,11 +446,11 @@ doctor:
         .stdout(contains("process\tpid=6060"))
         .stdout(is_match("secret-widget").unwrap().not());
 
-    let output = Command::cargo_bin("switch-cli")
+    let output = Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
+        .env("ANY_SWITCH_HOME", switch_home.path())
         .env(
-            "SWITCH_CLI_PROCESS_PROBE_FIXTURE",
+            "ANY_SWITCH_PROCESS_PROBE_FIXTURE",
             "6060\tSun May 24 21:00:00 2026\t/opt/widget-runner",
         )
         .args(["doctor", "widget", "--json"])
@@ -480,7 +480,7 @@ fn doctor_reports_definition_driven_non_secret_target_summary() {
         .prefix(".test-home-")
         .tempdir_in(&cwd)
         .unwrap();
-    let switch_home = home.path().join(".switch-cli");
+    let switch_home = home.path().join(".any-switch");
     let claude_dir = home.path().join(".claude");
     fs::create_dir_all(&claude_dir).unwrap();
     fs::write(
@@ -500,11 +500,11 @@ fn doctor_reports_definition_driven_non_secret_target_summary() {
     write_claude_json(home.path(), "acct-a", "org-a", "user-a", "original");
     add_claude_oauth_account_extra_key(home.path());
 
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
         .env("HOME", home.path())
-        .env("SWITCH_CLI_TEST_HOME", home.path())
-        .env("SWITCH_CLI_HOME", &switch_home)
+        .env("ANY_SWITCH_TEST_HOME", home.path())
+        .env("ANY_SWITCH_HOME", &switch_home)
         .args(["doctor", "claude"])
         .assert()
         .success()
@@ -542,7 +542,7 @@ fn doctor_json_reports_definition_summary_without_secret_values() {
         .prefix(".test-home-")
         .tempdir_in(&cwd)
         .unwrap();
-    let switch_home = home.path().join(".switch-cli");
+    let switch_home = home.path().join(".any-switch");
     let claude_dir = home.path().join(".claude");
     fs::create_dir_all(&claude_dir).unwrap();
     fs::write(
@@ -562,11 +562,11 @@ fn doctor_json_reports_definition_summary_without_secret_values() {
     write_claude_json(home.path(), "acct-a", "org-a", "user-a", "original");
     add_claude_oauth_account_extra_key(home.path());
 
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
         .env("HOME", home.path())
-        .env("SWITCH_CLI_TEST_HOME", home.path())
-        .env("SWITCH_CLI_HOME", &switch_home)
+        .env("ANY_SWITCH_TEST_HOME", home.path())
+        .env("ANY_SWITCH_HOME", &switch_home)
         .env("PROFILE_TOKEN", "profile-token")
         .args([
             "add",
@@ -582,22 +582,22 @@ fn doctor_json_reports_definition_summary_without_secret_values() {
         .assert()
         .success();
 
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
         .env("HOME", home.path())
-        .env("SWITCH_CLI_TEST_HOME", home.path())
-        .env("SWITCH_CLI_HOME", &switch_home)
-        .env("SWITCH_CLI_SKIP_PROCESS_PROBE", "1")
+        .env("ANY_SWITCH_TEST_HOME", home.path())
+        .env("ANY_SWITCH_HOME", &switch_home)
+        .env("ANY_SWITCH_SKIP_PROCESS_PROBE", "1")
         .args(["use", "claude-proxy", "--yes"])
         .assert()
         .success();
 
-    let output = Command::cargo_bin("switch-cli")
+    let output = Command::cargo_bin("any-switch")
         .unwrap()
         .env("HOME", home.path())
-        .env("SWITCH_CLI_TEST_HOME", home.path())
-        .env("SWITCH_CLI_HOME", &switch_home)
-        .env("SWITCH_CLI_SKIP_PROCESS_PROBE", "1")
+        .env("ANY_SWITCH_TEST_HOME", home.path())
+        .env("ANY_SWITCH_HOME", &switch_home)
+        .env("ANY_SWITCH_SKIP_PROCESS_PROBE", "1")
         .env("ANTHROPIC_AUTH_TOKEN", "external-secret")
         .args(["doctor", "claude", "--json"])
         .output()
@@ -658,11 +658,11 @@ fn doctor_reports_missing_oauth_capture() {
         .unwrap();
     write_codex_oauth(codex_home.path(), "acct-a", "refresh-a");
 
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
+        .env("ANY_SWITCH_HOME", switch_home.path())
         .env("CODEX_HOME", codex_home.path())
-        .env("SWITCH_CLI_SKIP_PROCESS_PROBE", "1")
+        .env("ANY_SWITCH_SKIP_PROCESS_PROBE", "1")
         .args([
             "import-current",
             "codex",
@@ -672,11 +672,11 @@ fn doctor_reports_missing_oauth_capture() {
         ])
         .assert()
         .success();
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
+        .env("ANY_SWITCH_HOME", switch_home.path())
         .env("CODEX_HOME", codex_home.path())
-        .env("SWITCH_CLI_SKIP_PROCESS_PROBE", "1")
+        .env("ANY_SWITCH_SKIP_PROCESS_PROBE", "1")
         .args(["use", "codex-broken", "--yes"])
         .assert()
         .success();
@@ -690,9 +690,9 @@ fn doctor_reports_missing_oauth_capture() {
     )
     .unwrap();
 
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
+        .env("ANY_SWITCH_HOME", switch_home.path())
         .env("CODEX_HOME", codex_home.path())
         .args(["status", "codex"])
         .assert()
@@ -701,9 +701,9 @@ fn doctor_reports_missing_oauth_capture() {
         .stdout(contains("reason\tCaptureMissing"))
         .stdout(contains("import-current"));
 
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
+        .env("ANY_SWITCH_HOME", switch_home.path())
         .env("CODEX_HOME", codex_home.path())
         .args(["status", "codex", "--json"])
         .assert()
@@ -712,9 +712,9 @@ fn doctor_reports_missing_oauth_capture() {
         .stdout(contains("\"reason\": \"CaptureMissing"))
         .stdout(contains("import-current"));
 
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
+        .env("ANY_SWITCH_HOME", switch_home.path())
         .env("CODEX_HOME", codex_home.path())
         .args(["doctor", "codex"])
         .assert()
@@ -722,9 +722,9 @@ fn doctor_reports_missing_oauth_capture() {
         .stdout(contains("capture\twarning: CaptureMissing"))
         .stdout(contains("import-current"));
 
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
+        .env("ANY_SWITCH_HOME", switch_home.path())
         .env("CODEX_HOME", codex_home.path())
         .args(["doctor", "codex", "--json"])
         .assert()

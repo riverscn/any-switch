@@ -25,7 +25,7 @@ pub fn write_generic_password(service: &str, account: &str, bytes: &[u8]) -> Res
 }
 
 fn fixture_entry_path(service: &str, account: &str) -> Result<Option<PathBuf>> {
-    let Some(root) = std::env::var_os("SWITCH_CLI_KEYCHAIN_FIXTURE_DIR") else {
+    let Some(root) = std::env::var_os("ANY_SWITCH_KEYCHAIN_FIXTURE_DIR") else {
         return Ok(None);
     };
     let root = PathBuf::from(root);
@@ -283,10 +283,10 @@ mod tests {
     fn fixture_backend_round_trips_secret_entry() {
         let _guard = ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
         let dir = tempdir().unwrap();
-        std::env::set_var("SWITCH_CLI_KEYCHAIN_FIXTURE_DIR", dir.path());
+        std::env::set_var("ANY_SWITCH_KEYCHAIN_FIXTURE_DIR", dir.path());
         write_generic_password("Claude Code-credentials", "alice", br#"{"token":"a"}"#).unwrap();
         let bytes = read_generic_password("Claude Code-credentials", "alice").unwrap();
-        std::env::remove_var("SWITCH_CLI_KEYCHAIN_FIXTURE_DIR");
+        std::env::remove_var("ANY_SWITCH_KEYCHAIN_FIXTURE_DIR");
         assert_eq!(bytes, br#"{"token":"a"}"#);
     }
 
@@ -294,10 +294,10 @@ mod tests {
     fn fixture_backend_preserves_non_utf8_secret_bytes() {
         let _guard = ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
         let dir = tempdir().unwrap();
-        std::env::set_var("SWITCH_CLI_KEYCHAIN_FIXTURE_DIR", dir.path());
+        std::env::set_var("ANY_SWITCH_KEYCHAIN_FIXTURE_DIR", dir.path());
         write_generic_password("Claude Code-credentials", "binary", &[0, 159, 255]).unwrap();
         let bytes = read_generic_password("Claude Code-credentials", "binary").unwrap();
-        std::env::remove_var("SWITCH_CLI_KEYCHAIN_FIXTURE_DIR");
+        std::env::remove_var("ANY_SWITCH_KEYCHAIN_FIXTURE_DIR");
         assert_eq!(bytes, [0, 159, 255]);
     }
 }

@@ -1,6 +1,6 @@
 # Security Policy
 
-`switch-cli` manages local credentials and application state. Please report
+`any-switch` manages local credentials and application state. Please report
 security issues privately instead of opening a public issue.
 
 ## Supported Versions
@@ -26,6 +26,6 @@ advisory flow, or contact the maintainer listed for the repository. Include:
 - OAuth capture blobs are stored locally under `captures/` and `backups/`.
 - Commands must not print secret fields or capture blob contents.
 - Target paths must remain inside the current user's home and outside
-  `SWITCH_CLI_HOME`.
+  `ANY_SWITCH_HOME`.
 - OAuth capture operations require the target app to be stopped unless the user
   explicitly uses the documented escape hatch.

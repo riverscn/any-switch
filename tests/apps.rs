@@ -46,17 +46,17 @@ kinds:
     )
     .unwrap();
 
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
+        .env("ANY_SWITCH_HOME", switch_home.path())
         .args(["apps"])
         .assert()
         .success()
         .stdout(contains("toy"));
 
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
+        .env("ANY_SWITCH_HOME", switch_home.path())
         .args([
             "add",
             "toy",
@@ -69,9 +69,9 @@ kinds:
         .assert()
         .success();
 
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
+        .env("ANY_SWITCH_HOME", switch_home.path())
         .args(["use", "toy-demo", "--yes"])
         .assert()
         .success();
@@ -127,9 +127,9 @@ kinds:
     )
     .unwrap();
 
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
+        .env("ANY_SWITCH_HOME", switch_home.path())
         .env("TEMPLATE_TOKEN", "secret-token")
         .args([
             "add",
@@ -145,9 +145,9 @@ kinds:
         .assert()
         .success();
 
-    let dry_run_output = Command::cargo_bin("switch-cli")
+    let dry_run_output = Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
+        .env("ANY_SWITCH_HOME", switch_home.path())
         .args(["use", "templater-demo", "--dry-run", "--json"])
         .assert()
         .success()
@@ -165,10 +165,10 @@ kinds:
         "file_capture"
     );
 
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
-        .env("SWITCH_CLI_SKIP_PROCESS_PROBE", "1")
+        .env("ANY_SWITCH_HOME", switch_home.path())
+        .env("ANY_SWITCH_SKIP_PROCESS_PROBE", "1")
         .args(["use", "templater-demo", "--yes"])
         .assert()
         .success();
@@ -177,18 +177,18 @@ kinds:
     assert!(rendered.contains("token=secret-token"));
     assert!(rendered.contains("model=large"));
 
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
+        .env("ANY_SWITCH_HOME", switch_home.path())
         .args(["status", "templater"])
         .assert()
         .success()
         .stdout(contains("templater\tmatched\ttemplater-demo"));
 
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
-        .env("SWITCH_CLI_SKIP_PROCESS_PROBE", "1")
+        .env("ANY_SWITCH_HOME", switch_home.path())
+        .env("ANY_SWITCH_SKIP_PROCESS_PROBE", "1")
         .args(["doctor", "templater"])
         .assert()
         .success()
@@ -201,19 +201,19 @@ kinds:
     let backup_ids = list_backup_ids(switch_home.path(), "templater");
     assert_eq!(backup_ids.len(), 1);
 
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
-        .env("SWITCH_CLI_SKIP_PROCESS_PROBE", "1")
+        .env("ANY_SWITCH_HOME", switch_home.path())
+        .env("ANY_SWITCH_SKIP_PROCESS_PROBE", "1")
         .args(["backup", "list", "templater", "--json"])
         .assert()
         .success()
         .stdout(contains("\"app\": \"templater\""));
 
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
-        .env("SWITCH_CLI_SKIP_PROCESS_PROBE", "1")
+        .env("ANY_SWITCH_HOME", switch_home.path())
+        .env("ANY_SWITCH_SKIP_PROCESS_PROBE", "1")
         .args(["restore-target", "templater", &backup_ids[0], "--yes"])
         .assert()
         .success();
@@ -223,9 +223,9 @@ kinds:
         "model=previous\n"
     );
 
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
+        .env("ANY_SWITCH_HOME", switch_home.path())
         .args(["remove", "templater-demo", "--yes"])
         .assert()
         .success()
@@ -298,9 +298,9 @@ kinds:
     )
     .unwrap();
 
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
+        .env("ANY_SWITCH_HOME", switch_home.path())
         .args([
             "add",
             "tomlapp",
@@ -315,10 +315,10 @@ kinds:
         .assert()
         .success();
 
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
-        .env("SWITCH_CLI_SKIP_PROCESS_PROBE", "1")
+        .env("ANY_SWITCH_HOME", switch_home.path())
+        .env("ANY_SWITCH_SKIP_PROCESS_PROBE", "1")
         .args(["use", "tomlapp-demo", "--yes"])
         .assert()
         .success();
@@ -331,9 +331,9 @@ kinds:
     assert_eq!(doc["nested"]["value"].as_str(), Some("managed"));
     assert_eq!(doc["unmanaged"]["keep"].as_str(), Some("yes"));
 
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
+        .env("ANY_SWITCH_HOME", switch_home.path())
         .args(["status", "tomlapp"])
         .assert()
         .success()
@@ -352,9 +352,9 @@ keep = "changed"
 "#,
     )
     .unwrap();
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
+        .env("ANY_SWITCH_HOME", switch_home.path())
         .args(["status", "tomlapp"])
         .assert()
         .success()
@@ -374,9 +374,9 @@ keep = "changed"
 "#,
     )
     .unwrap();
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
+        .env("ANY_SWITCH_HOME", switch_home.path())
         .args(["status", "tomlapp"])
         .assert()
         .success()
@@ -439,10 +439,10 @@ kinds:
     )
     .unwrap();
 
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
-        .env("SWITCH_CLI_SKIP_PROCESS_PROBE", "1")
+        .env("ANY_SWITCH_HOME", switch_home.path())
+        .env("ANY_SWITCH_SKIP_PROCESS_PROBE", "1")
         .args([
             "import-current",
             "customoauth",
@@ -475,18 +475,18 @@ kinds:
     )
     .unwrap();
 
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
-        .env("SWITCH_CLI_SKIP_PROCESS_PROBE", "1")
+        .env("ANY_SWITCH_HOME", switch_home.path())
+        .env("ANY_SWITCH_SKIP_PROCESS_PROBE", "1")
         .args(["detach", "customoauth"])
         .assert()
         .success();
 
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
-        .env("SWITCH_CLI_SKIP_PROCESS_PROBE", "1")
+        .env("ANY_SWITCH_HOME", switch_home.path())
+        .env("ANY_SWITCH_SKIP_PROCESS_PROBE", "1")
         .args(["use", "customoauth-work", "--yes"])
         .assert()
         .success()
@@ -557,10 +557,10 @@ kinds:
         ),
     )
     .unwrap();
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
-        .env("SWITCH_CLI_SKIP_PROCESS_PROBE", "1")
+        .env("ANY_SWITCH_HOME", switch_home.path())
+        .env("ANY_SWITCH_SKIP_PROCESS_PROBE", "1")
         .args([
             "import-current",
             "customjsonoauth",
@@ -597,18 +597,18 @@ kinds:
     )
     .unwrap();
 
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
-        .env("SWITCH_CLI_SKIP_PROCESS_PROBE", "1")
+        .env("ANY_SWITCH_HOME", switch_home.path())
+        .env("ANY_SWITCH_SKIP_PROCESS_PROBE", "1")
         .args(["detach", "customjsonoauth"])
         .assert()
         .success();
 
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
-        .env("SWITCH_CLI_SKIP_PROCESS_PROBE", "1")
+        .env("ANY_SWITCH_HOME", switch_home.path())
+        .env("ANY_SWITCH_SKIP_PROCESS_PROBE", "1")
         .args(["use", "customjsonoauth-work", "--yes"])
         .assert()
         .success()
@@ -657,9 +657,9 @@ kinds:
     )
     .unwrap();
 
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
+        .env("ANY_SWITCH_HOME", switch_home.path())
         .args(["apps", "validate", bad_definition.to_str().unwrap()])
         .assert()
         .failure()
@@ -693,9 +693,9 @@ kinds:
     )
     .unwrap();
 
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
+        .env("ANY_SWITCH_HOME", switch_home.path())
         .args(["apps", "validate", bad_definition.to_str().unwrap()])
         .assert()
         .failure()
@@ -730,27 +730,27 @@ kinds:
     )
     .unwrap();
 
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
+        .env("ANY_SWITCH_HOME", switch_home.path())
         .args(["apps"])
         .assert()
         .success()
         .stdout(contains("codex"))
         .stdout(contains("Override"));
 
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
+        .env("ANY_SWITCH_HOME", switch_home.path())
         .args(["apps", "show", "codex"])
         .assert()
         .success()
         .stdout(contains("codex-alt"))
         .stdout(contains("gpt-override"));
 
-    let output = Command::cargo_bin("switch-cli")
+    let output = Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
+        .env("ANY_SWITCH_HOME", switch_home.path())
         .args(["apps", "show", "codex", "--json"])
         .output()
         .unwrap();
@@ -794,10 +794,10 @@ kinds:
     )
     .unwrap();
 
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
-        .env("SWITCH_CLI_TEST_HOME", &cwd)
+        .env("ANY_SWITCH_HOME", switch_home.path())
+        .env("ANY_SWITCH_TEST_HOME", &cwd)
         .args(["apps", "validate"])
         .assert()
         .failure()
@@ -843,28 +843,28 @@ app:
     )
     .unwrap();
 
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
-        .env("SWITCH_CLI_TEST_HOME", &cwd)
+        .env("ANY_SWITCH_HOME", switch_home.path())
+        .env("ANY_SWITCH_TEST_HOME", &cwd)
         .args(["config", "path"])
         .assert()
         .success()
         .stdout(contains("profiles.yaml"));
 
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
-        .env("SWITCH_CLI_TEST_HOME", &cwd)
+        .env("ANY_SWITCH_HOME", switch_home.path())
+        .env("ANY_SWITCH_TEST_HOME", &cwd)
         .args(["apps", "validate", standalone.path().to_str().unwrap()])
         .assert()
         .success()
         .stdout(contains("ok"));
 
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
-        .env("SWITCH_CLI_TEST_HOME", &cwd)
+        .env("ANY_SWITCH_HOME", switch_home.path())
+        .env("ANY_SWITCH_TEST_HOME", &cwd)
         .args(["apps", "validate"])
         .assert()
         .failure()
@@ -897,18 +897,18 @@ kinds:
     )
     .unwrap();
 
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
+        .env("ANY_SWITCH_HOME", switch_home.path())
         .args(["apps", "export", "codex", "--source", "system"])
         .assert()
         .success()
         .stdout(contains("gpt-5-codex"))
         .stdout(contains("gpt-override").not());
 
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
+        .env("ANY_SWITCH_HOME", switch_home.path())
         .args(["apps", "export", "codex", "--source", "resolved"])
         .assert()
         .success()
@@ -918,9 +918,9 @@ kinds:
         .path()
         .join("overrides.d")
         .join("generated.yaml");
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
+        .env("ANY_SWITCH_HOME", switch_home.path())
         .args([
             "apps",
             "export",
@@ -933,17 +933,17 @@ kinds:
         .assert()
         .success();
 
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
+        .env("ANY_SWITCH_HOME", switch_home.path())
         .args(["apps", "validate", generated.to_str().unwrap()])
         .assert()
         .success()
         .stdout(contains("ok"));
 
-    Command::cargo_bin("switch-cli")
+    Command::cargo_bin("any-switch")
         .unwrap()
-        .env("SWITCH_CLI_HOME", switch_home.path())
+        .env("ANY_SWITCH_HOME", switch_home.path())
         .args([
             "apps",
             "export",

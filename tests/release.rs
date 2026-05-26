@@ -122,8 +122,8 @@ fn release_workflow_uploads_documented_binary_artifacts() {
         })
         .expect("release workflow must upload artifacts to a GitHub release");
     let files = release_step["with"]["files"].as_str().unwrap();
-    assert!(files.contains("switch-cli-${{ github.ref_name }}-${{ matrix.target }}.tar.gz"));
-    assert!(files.contains("switch-cli-${{ github.ref_name }}-${{ matrix.target }}.tar.gz.sha256"));
+    assert!(files.contains("any-switch-${{ github.ref_name }}-${{ matrix.target }}.tar.gz"));
+    assert!(files.contains("any-switch-${{ github.ref_name }}-${{ matrix.target }}.tar.gz.sha256"));
 }
 
 #[test]
@@ -149,7 +149,7 @@ fn release_archive_includes_auditable_builtin_definitions() {
         .arg("scripts/package-release.sh")
         .arg("v9.9.9")
         .arg("test-target")
-        .arg(env!("CARGO_BIN_EXE_switch-cli"))
+        .arg(env!("CARGO_BIN_EXE_any-switch"))
         .arg(out_dir.path())
         .output()
         .unwrap();
@@ -160,14 +160,14 @@ fn release_archive_includes_auditable_builtin_definitions() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    let archive = out_dir.path().join("switch-cli-v9.9.9-test-target.tar.gz");
+    let archive = out_dir.path().join("any-switch-v9.9.9-test-target.tar.gz");
     let checksum = out_dir
         .path()
-        .join("switch-cli-v9.9.9-test-target.tar.gz.sha256");
+        .join("any-switch-v9.9.9-test-target.tar.gz.sha256");
     assert!(archive.exists());
     assert!(checksum.exists());
     let checksum_text = fs::read_to_string(&checksum).unwrap();
-    let expected_checksum_suffix = "  switch-cli-v9.9.9-test-target.tar.gz\n";
+    let expected_checksum_suffix = "  any-switch-v9.9.9-test-target.tar.gz\n";
     assert!(
         checksum_text.ends_with(expected_checksum_suffix),
         "checksum should use a portable archive basename, got {checksum_text:?}"
@@ -181,23 +181,23 @@ fn release_archive_includes_auditable_builtin_definitions() {
     assert!(listing.status.success());
     let listing = String::from_utf8(listing.stdout).unwrap();
     for path in [
-        "switch-cli-v9.9.9-test-target/switch-cli",
-        "switch-cli-v9.9.9-test-target/README.md",
-        "switch-cli-v9.9.9-test-target/CONTRIBUTING.md",
-        "switch-cli-v9.9.9-test-target/SECURITY.md",
-        "switch-cli-v9.9.9-test-target/LICENSE-APACHE",
-        "switch-cli-v9.9.9-test-target/LICENSE-MIT",
-        "switch-cli-v9.9.9-test-target/docs/design.md",
-        "switch-cli-v9.9.9-test-target/docs/release.md",
-        "switch-cli-v9.9.9-test-target/docs/acceptance.md",
-        "switch-cli-v9.9.9-test-target/docs/manual-verification.md",
-        "switch-cli-v9.9.9-test-target/docs/manual-evidence-template.md",
-        "switch-cli-v9.9.9-test-target/scripts/manual-evidence.sh",
+        "any-switch-v9.9.9-test-target/any-switch",
+        "any-switch-v9.9.9-test-target/README.md",
+        "any-switch-v9.9.9-test-target/CONTRIBUTING.md",
+        "any-switch-v9.9.9-test-target/SECURITY.md",
+        "any-switch-v9.9.9-test-target/LICENSE-APACHE",
+        "any-switch-v9.9.9-test-target/LICENSE-MIT",
+        "any-switch-v9.9.9-test-target/docs/design.md",
+        "any-switch-v9.9.9-test-target/docs/release.md",
+        "any-switch-v9.9.9-test-target/docs/acceptance.md",
+        "any-switch-v9.9.9-test-target/docs/manual-verification.md",
+        "any-switch-v9.9.9-test-target/docs/manual-evidence-template.md",
+        "any-switch-v9.9.9-test-target/scripts/manual-evidence.sh",
     ] {
         assert!(listing.contains(path), "archive missing {path}");
     }
     for name in builtin_definition_names {
-        let path = format!("switch-cli-v9.9.9-test-target/app_definitions/builtin/{name}");
+        let path = format!("any-switch-v9.9.9-test-target/app_definitions/builtin/{name}");
         assert!(listing.contains(&path), "archive missing {path}");
     }
 
@@ -207,7 +207,7 @@ fn release_archive_includes_auditable_builtin_definitions() {
             "-a",
             "256",
             "-c",
-            "switch-cli-v9.9.9-test-target.tar.gz.sha256",
+            "any-switch-v9.9.9-test-target.tar.gz.sha256",
         ])
         .output()
         .unwrap();
@@ -234,8 +234,8 @@ fn release_archive_includes_auditable_builtin_definitions() {
         String::from_utf8_lossy(&extract_output.stderr)
     );
     let packaged_binary = extract_dir
-        .join("switch-cli-v9.9.9-test-target")
-        .join("switch-cli");
+        .join("any-switch-v9.9.9-test-target")
+        .join("any-switch");
     let version_output = std::process::Command::new(&packaged_binary)
         .arg("--version")
         .output()
@@ -248,10 +248,10 @@ fn release_archive_includes_auditable_builtin_definitions() {
     );
     assert_eq!(
         String::from_utf8(version_output.stdout).unwrap().trim(),
-        concat!("switch-cli ", env!("CARGO_PKG_VERSION"))
+        concat!("any-switch ", env!("CARGO_PKG_VERSION"))
     );
     let packaged_evidence_script = extract_dir
-        .join("switch-cli-v9.9.9-test-target")
+        .join("any-switch-v9.9.9-test-target")
         .join("scripts")
         .join("manual-evidence.sh");
     let evidence_help_output = std::process::Command::new(&packaged_evidence_script)
@@ -271,12 +271,12 @@ fn release_archive_includes_auditable_builtin_definitions() {
     fs::create_dir_all(&evidence_home).unwrap();
     let evidence_path = extract_dir.join("manual-evidence-test.md");
     let evidence_output = std::process::Command::new(&packaged_evidence_script)
-        .current_dir(extract_dir.join("switch-cli-v9.9.9-test-target"))
+        .current_dir(extract_dir.join("any-switch-v9.9.9-test-target"))
         .env("HOME", &evidence_home)
-        .env("SWITCH_CLI_TEST_HOME", &evidence_home)
-        .env("SWITCH_CLI_BIN", &packaged_binary)
+        .env("ANY_SWITCH_TEST_HOME", &evidence_home)
+        .env("ANY_SWITCH_BIN", &packaged_binary)
         .env("PATH", "/usr/bin:/bin")
-        .env_remove("SWITCH_CLI_HOME")
+        .env_remove("ANY_SWITCH_HOME")
         .arg(&evidence_path)
         .output()
         .unwrap();
@@ -287,14 +287,14 @@ fn release_archive_includes_auditable_builtin_definitions() {
         String::from_utf8_lossy(&evidence_output.stderr)
     );
     let evidence = fs::read_to_string(&evidence_path).unwrap();
-    assert!(evidence.contains("SWITCH_CLI_HOME` note: temporary; removed when this script exits"));
+    assert!(evidence.contains("ANY_SWITCH_HOME` note: temporary; removed when this script exits"));
     let temporary_home = evidence
         .lines()
-        .find_map(|line| line.strip_prefix("- `SWITCH_CLI_HOME` used: "))
-        .expect("manual evidence must record SWITCH_CLI_HOME");
+        .find_map(|line| line.strip_prefix("- `ANY_SWITCH_HOME` used: "))
+        .expect("manual evidence must record ANY_SWITCH_HOME");
     assert!(
         !std::path::Path::new(temporary_home).exists(),
-        "manual-evidence.sh should remove its temporary SWITCH_CLI_HOME"
+        "manual-evidence.sh should remove its temporary ANY_SWITCH_HOME"
     );
 
     assert!(workflow.contains("scripts/package-release.sh"));
@@ -314,7 +314,7 @@ fn release_package_script_rejects_unsafe_artifact_names() {
             .arg("scripts/package-release.sh")
             .arg(tag)
             .arg(target)
-            .arg(env!("CARGO_BIN_EXE_switch-cli"))
+            .arg(env!("CARGO_BIN_EXE_any-switch"))
             .arg(manifest_dir.join(".test-invalid-release-package"))
             .output()
             .unwrap();
