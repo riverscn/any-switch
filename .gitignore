@@ -1,0 +1,6 @@
+/target
+.DS_Store
+.smoke-*
+.test-*
+manual-evidence-*.md
+.claude/settings.local.json

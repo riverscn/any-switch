@@ -1,0 +1,169 @@
+schema_version: 1
+app:
+  id: claude
+  display_name: "Claude Code"
+  definition_version: 1
+process_probe:
+  names: ["claude", "Claude"]
+doctor:
+  json_object_schemas:
+    - name: oauth_account
+      path: ~/.claude.json
+      json_path: $.oauthAccount
+      known_keys:
+        - accountUuid
+        - organizationUuid
+        - organizationName
+        - organizationRole
+        - emailAddress
+        - subscriptionType
+        - subscriptionCreatedAt
+        - billingType
+        - accountCreatedAt
+        - hasExtraUsageEnabled
+        - claudeCodeTrialEndsAt
+        - ccOnboardingFlags
+      extra_keys_warning: "oauthAccount contains fields not listed in the bundled definition; run import-current for OAuth profiles after confirming the upgraded app state"
+override_checks:
+  - handler: process_env_non_empty
+    env_names:
+      - ANTHROPIC_AUTH_TOKEN
+      - ANTHROPIC_API_KEY
+  - handler: json_object_keys_non_empty
+    applies_to_kinds: [oauth_capture]
+    path: ~/.claude/settings.json
+    json_path: $.env
+    keys:
+      - ANTHROPIC_AUTH_TOKEN
+      - ANTHROPIC_API_KEY
+    reason_prefix: settings_env
+  - handler: json_string_non_empty
+    applies_to_kinds: [oauth_capture]
+    path: ~/.claude/settings.json
+    json_path: $.apiKeyHelper
+    reason: settings:apiKeyHelper
+  - handler: managed_json_object_keys_non_empty
+    test_env: SWITCH_CLI_TEST_CLAUDE_MANAGED_SETTINGS_DIR
+    macos_dir: "/Library/Application Support/ClaudeCode"
+    linux_dir: "/etc/claude-code"
+    windows_dir: "C:\\Program Files\\ClaudeCode"
+    json_path: $.env
+    keys:
+      - ANTHROPIC_AUTH_TOKEN
+      - ANTHROPIC_API_KEY
+    reason_prefix: env
+  - handler: managed_json_path_present
+    test_env: SWITCH_CLI_TEST_CLAUDE_MANAGED_SETTINGS_DIR
+    macos_dir: "/Library/Application Support/ClaudeCode"
+    linux_dir: "/etc/claude-code"
+    windows_dir: "C:\\Program Files\\ClaudeCode"
+    json_path: $.apiKeyHelper
+    reason: apiKeyHelper
+  - handler: managed_json_path_present
+    test_env: SWITCH_CLI_TEST_CLAUDE_MANAGED_SETTINGS_DIR
+    macos_dir: "/Library/Application Support/ClaudeCode"
+    linux_dir: "/etc/claude-code"
+    windows_dir: "C:\\Program Files\\ClaudeCode"
+    json_path: $.policyHelper
+    reason: policyHelper
+kinds:
+  env_injection:
+    field_schema:
+      base_url:
+        type: string
+        required: true
+      auth_token:
+        type: string
+        required: true
+        sensitive: true
+      models:
+        type: object
+        fields:
+          default:
+            type: string
+            required: false
+    targets:
+      - handler: json_env_merge
+        path: ~/.claude/settings.json
+        json_path: $.env
+        managed_keys:
+          - ANTHROPIC_BASE_URL
+          - ANTHROPIC_AUTH_TOKEN
+          - ANTHROPIC_MODEL
+          - ANTHROPIC_DEFAULT_HAIKU_MODEL
+          - ANTHROPIC_DEFAULT_SONNET_MODEL
+          - ANTHROPIC_DEFAULT_OPUS_MODEL
+        mapping:
+          ANTHROPIC_BASE_URL: "{{ fields.base_url }}"
+          ANTHROPIC_AUTH_TOKEN: "{{ fields.auth_token }}"
+          ANTHROPIC_MODEL: "{{ fields.models.default }}"
+          ANTHROPIC_DEFAULT_HAIKU_MODEL: "{{ fields.models.haiku }}"
+          ANTHROPIC_DEFAULT_SONNET_MODEL: "{{ fields.models.sonnet }}"
+          ANTHROPIC_DEFAULT_OPUS_MODEL: "{{ fields.models.opus }}"
+  oauth_capture:
+    capture_sources:
+      - handler: secret_entry
+        backend: macos_keychain
+        service: "Claude Code-credentials"
+        account: "${MACOS_USER}"
+        stored_as: keychain.json
+        required: true
+        platforms: [macos]
+        identity:
+          handler: json_paths
+          fields:
+            account_uuid:
+              path: $.claudeAiOauth.accessToken.accountUuid
+              verify: required
+            organization_uuid:
+              path: $.claudeAiOauth.accessToken.organizationUuid
+              verify: required
+      - handler: file_capture
+        path: ${CLAUDE_CONFIG_DIR:-~/.claude}/.credentials.json
+        stored_as: credentials.json
+        required: true
+        identity:
+          handler: json_paths
+          fields:
+            account_uuid:
+              path: $.claudeAiOauth.accessToken.accountUuid
+              verify: required
+            organization_uuid:
+              path: $.claudeAiOauth.accessToken.organizationUuid
+              verify: required
+    cleanup_targets:
+      - handler: json_remove_keys
+        path: ~/.claude/settings.json
+        json_path: $.env
+        keys:
+          - ANTHROPIC_BASE_URL
+          - ANTHROPIC_AUTH_TOKEN
+          - ANTHROPIC_MODEL
+          - ANTHROPIC_DEFAULT_HAIKU_MODEL
+          - ANTHROPIC_DEFAULT_SONNET_MODEL
+          - ANTHROPIC_DEFAULT_OPUS_MODEL
+        requires_app_stopped: true
+    identity:
+      handler: json_paths
+      fields:
+        account_uuid:
+          path: $.oauthAccount.accountUuid
+          verify: required
+        organization_uuid:
+          path: $.oauthAccount.organizationUuid
+          verify: required
+        organization_name:
+          path: $.oauthAccount.organizationName
+          verify: optional
+        email:
+          path: $.oauthAccount.emailAddress
+          verify: optional
+    targets:
+      - handler: json_subtree
+        path: ~/.claude.json
+        json_path: $.oauthAccount
+        requires_app_stopped: true
+      - handler: json_subtree
+        path: ~/.claude.json
+        json_path: $.userID
+        requires_app_stopped: true

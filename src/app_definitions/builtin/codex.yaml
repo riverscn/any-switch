@@ -1,0 +1,96 @@
+schema_version: 1
+app:
+  id: codex
+  display_name: "OpenAI Codex"
+  definition_version: 1
+process_probe:
+  names: ["codex"]
+doctor:
+  json_fields:
+    - name: auth_mode
+      path: ${CODEX_HOME:-~/.codex}/auth.json
+      json_path: $.auth_mode
+    - name: last_refresh
+      path: ${CODEX_HOME:-~/.codex}/auth.json
+      json_path: $.last_refresh
+      stale_after_days: 90
+guards:
+  - handler: toml_string_allowlist
+    path: ${CODEX_HOME:-~/.codex}/config.toml
+    toml_path: cli_auth_credentials_store
+    allowed_values: ["file"]
+    missing_ok: true
+    error_kind: CredentialStoreUnsupported
+kinds:
+  file_template:
+    field_schema:
+      api_key:
+        type: string
+        required: true
+        sensitive: true
+      base_url:
+        type: string
+        required: false
+      model:
+        type: string
+        required: false
+        default: "gpt-5-codex"
+      model_provider:
+        type: string
+        required: false
+        default: "openai"
+      model_reasoning_effort:
+        type: string
+        required: false
+      provider_id:
+        type: string
+        required: false
+    targets:
+      - handler: file_capture
+        path: ${CODEX_HOME:-~/.codex}/auth.json
+        template: |-
+          {
+            "auth_mode": "apikey",
+            "OPENAI_API_KEY": "{{ fields.api_key }}"
+          }
+        import_json_matches:
+          $.auth_mode: apikey
+        import_json_fields:
+          api_key: $.OPENAI_API_KEY
+        import_unmatched_error: "ImportAmbiguous: auth target exists but has no valid auth_mode import rule"
+      - handler: toml_managed_paths
+        path: ${CODEX_HOME:-~/.codex}/config.toml
+        toml_paths:
+          - model
+          - model_provider
+          - model_reasoning_effort
+          - model_providers
+  oauth_capture:
+    identity:
+      handler: json_paths
+      fields:
+        account_id:
+          path: $.tokens.account_id
+          verify: required
+        email:
+          path: $.tokens.id_token.email
+          verify: optional
+    targets:
+      - handler: file_capture
+        path: ${CODEX_HOME:-~/.codex}/auth.json
+        import_json_matches:
+          $.auth_mode: chatgpt
+        import_json_required_strings:
+          - $.tokens.refresh_token
+          - $.tokens.id_token
+        import_json_forbidden_strings:
+          - $.OPENAI_API_KEY
+        requires_app_stopped: true
+      - handler: toml_managed_paths
+        path: ${CODEX_HOME:-~/.codex}/config.toml
+        toml_paths:
+          - model
+          - model_provider
+          - model_reasoning_effort
+          - model_providers
+        requires_app_stopped: true
