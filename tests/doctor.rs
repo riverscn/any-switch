@@ -505,9 +505,13 @@ fn doctor_reports_definition_driven_non_secret_target_summary() {
         .env("HOME", home.path())
         .env("ANY_SWITCH_TEST_HOME", home.path())
         .env("ANY_SWITCH_HOME", &switch_home)
+        .env("ANY_SWITCH_TEST_PLATFORM", "linux")
         .args(["doctor", "claude"])
         .assert()
         .success()
+        .stdout(contains(
+            "definition_capture_source\toauth_capture\tfile_capture\texists\tcredentials.json",
+        ))
         .stdout(contains(
             "definition_target\tenv_injection\tjson_env_merge\texists",
         ))
@@ -533,6 +537,36 @@ fn doctor_reports_definition_driven_non_secret_target_summary() {
         .stdout(is_match("settings-secret").unwrap().not())
         .stdout(is_match("refresh-a").unwrap().not())
         .stdout(is_match("secret-helper").unwrap().not());
+}
+
+#[test]
+fn doctor_reports_missing_secret_entry_capture_source_without_secret_bytes() {
+    let cwd = std::env::current_dir().unwrap();
+    let home = tempfile::Builder::new()
+        .prefix(".test-home-")
+        .tempdir_in(&cwd)
+        .unwrap();
+    let switch_home = home.path().join(".any-switch");
+    let fixture_dir = home.path().join("keychain-fixture");
+    fs::create_dir_all(&fixture_dir).unwrap();
+    write_claude_json(home.path(), "acct-a", "org-a", "user-a", "original");
+
+    Command::cargo_bin("any-switch")
+        .unwrap()
+        .env("HOME", home.path())
+        .env("ANY_SWITCH_TEST_HOME", home.path())
+        .env("ANY_SWITCH_HOME", &switch_home)
+        .env("ANY_SWITCH_TEST_PLATFORM", "macos")
+        .env("ANY_SWITCH_KEYCHAIN_FIXTURE_DIR", &fixture_dir)
+        .args(["doctor", "claude"])
+        .assert()
+        .success()
+        .stdout(contains(
+            "definition_capture_source\toauth_capture\tsecret_entry\tmissing\tkeychain.json",
+        ))
+        .stdout(contains("service=Claude Code-credentials"))
+        .stdout(contains("definition_identity\toauth_capture"))
+        .stdout(is_match("refresh-a").unwrap().not());
 }
 
 #[test]
@@ -599,6 +633,7 @@ fn doctor_json_reports_definition_summary_without_secret_values() {
         .env("ANY_SWITCH_HOME", &switch_home)
         .env("ANY_SWITCH_SKIP_PROCESS_PROBE", "1")
         .env("ANTHROPIC_AUTH_TOKEN", "external-secret")
+        .env("ANY_SWITCH_TEST_PLATFORM", "linux")
         .args(["doctor", "claude", "--json"])
         .output()
         .unwrap();
@@ -619,6 +654,13 @@ fn doctor_json_reports_definition_summary_without_secret_values() {
         .iter()
         .any(|reason| reason == "process_env:ANTHROPIC_AUTH_TOKEN"));
     let records = value["app"]["definition"].as_array().unwrap();
+    assert!(records.iter().any(|record| {
+        record["type"] == "capture_source"
+            && record["kind"] == "oauth_capture"
+            && record["handler"] == "file_capture"
+            && record["status"] == "exists"
+            && record["stored_as"] == "credentials.json"
+    }));
     assert!(records.iter().any(|record| {
         record["type"] == "json_object_schema"
             && record["name"] == "oauth_account"

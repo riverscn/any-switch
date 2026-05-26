@@ -16,6 +16,13 @@ pub fn read_generic_password(service: &str, account: &str) -> Result<Vec<u8>> {
     read_platform_generic_password(service, account)
 }
 
+pub fn generic_password_exists(service: &str, account: &str) -> Result<bool> {
+    if let Some(path) = fixture_entry_path(service, account)? {
+        return Ok(path.exists());
+    }
+    platform_generic_password_exists(service, account)
+}
+
 pub fn write_generic_password(service: &str, account: &str, bytes: &[u8]) -> Result<()> {
     if let Some(path) = fixture_entry_path(service, account)? {
         write_private(&path, bytes)?;
@@ -39,8 +46,21 @@ fn read_platform_generic_password(service: &str, account: &str) -> Result<Vec<u8
     macos::read_generic_password(service, account)
 }
 
+#[cfg(target_os = "macos")]
+fn platform_generic_password_exists(service: &str, account: &str) -> Result<bool> {
+    macos::generic_password_exists(service, account)
+}
+
 #[cfg(not(target_os = "macos"))]
 fn read_platform_generic_password(service: &str, account: &str) -> Result<Vec<u8>> {
+    let _ = (service, account);
+    Err(anyhow!(
+        "KeychainUnavailable: secret_entry is only available on macOS in this build"
+    ))
+}
+
+#[cfg(not(target_os = "macos"))]
+fn platform_generic_password_exists(service: &str, account: &str) -> Result<bool> {
     let _ = (service, account);
     Err(anyhow!(
         "KeychainUnavailable: secret_entry is only available on macOS in this build"
@@ -146,6 +166,40 @@ mod macos {
         };
         free_password_data(password_data)?;
         Ok(bytes)
+    }
+
+    pub fn generic_password_exists(service: &str, account: &str) -> Result<bool> {
+        let service_len = ffi_len(service, "service")?;
+        let account_len = ffi_len(account, "account")?;
+        let mut item_ref = ptr::null_mut();
+
+        let status = unsafe {
+            // SAFETY: Passing NULL for password length/data asks Security.framework to return
+            // only an item reference, avoiding secret byte retrieval for existence diagnostics.
+            SecKeychainFindGenericPassword(
+                ptr::null_mut(),
+                service_len,
+                service.as_ptr().cast(),
+                account_len,
+                account.as_ptr().cast(),
+                ptr::null_mut(),
+                ptr::null_mut(),
+                &mut item_ref,
+            )
+        };
+        match status {
+            ERR_SEC_SUCCESS => {
+                release_item(item_ref);
+                Ok(true)
+            }
+            ERR_SEC_ITEM_NOT_FOUND => Ok(false),
+            status => Err(keychain_error(
+                "find generic password item",
+                service,
+                account,
+                status,
+            )),
+        }
     }
 
     pub fn write_generic_password(service: &str, account: &str, bytes: &[u8]) -> Result<()> {
@@ -286,6 +340,7 @@ mod tests {
         let dir = tempdir().unwrap();
         std::env::set_var("ANY_SWITCH_KEYCHAIN_FIXTURE_DIR", dir.path());
         write_generic_password("Claude Code-credentials", "alice", br#"{"token":"a"}"#).unwrap();
+        assert!(generic_password_exists("Claude Code-credentials", "alice").unwrap());
         let bytes = read_generic_password("Claude Code-credentials", "alice").unwrap();
         std::env::remove_var("ANY_SWITCH_KEYCHAIN_FIXTURE_DIR");
         assert_eq!(bytes, br#"{"token":"a"}"#);

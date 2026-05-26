@@ -36,7 +36,7 @@ fi
 
 temp_dir="$(mktemp -d "${TMPDIR:-/tmp}/any-switch-sign.XXXXXX")"
 keychain="${temp_dir}/codesign.keychain-db"
-keychain_password="$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32)"
+keychain_password="$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')"
 cert_path="${temp_dir}/certificate.p12"
 notary_zip="${temp_dir}/any-switch-notary.zip"
 
@@ -46,7 +46,14 @@ cleanup() {
 }
 trap cleanup EXIT
 
-printf '%s' "${APPLE_DEVELOPER_ID_CERTIFICATE_BASE64}" | base64 --decode >"${cert_path}"
+if printf '%s' "${APPLE_DEVELOPER_ID_CERTIFICATE_BASE64}" | base64 --decode >"${cert_path}" 2>/dev/null; then
+  :
+elif printf '%s' "${APPLE_DEVELOPER_ID_CERTIFICATE_BASE64}" | base64 -D >"${cert_path}" 2>/dev/null; then
+  :
+else
+  echo "macOS signing: failed to decode APPLE_DEVELOPER_ID_CERTIFICATE_BASE64" >&2
+  exit 2
+fi
 
 security create-keychain -p "${keychain_password}" "${keychain}"
 security set-keychain-settings -lut 21600 "${keychain}"

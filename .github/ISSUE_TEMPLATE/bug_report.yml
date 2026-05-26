@@ -1,0 +1,73 @@
+name: Bug report
+description: Report a reproducible any-switch bug.
+title: "[bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not paste secret values, OAuth capture blobs, API keys, Keychain values, or full local credential files. Redact account identifiers unless they are required for the report.
+  - type: input
+    id: version
+    attributes:
+      label: any-switch version
+      description: Output of `any-switch --version`.
+      placeholder: any-switch 0.1.0
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - macOS
+        - Linux
+        - Windows
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: app
+    attributes:
+      label: Managed app
+      description: App definition id or app name, if the issue is app-specific.
+      placeholder: e.g. claude, codex, git, proxy, or another app id
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      description: Include commands, flags, and relevant environment variables. Redact secrets.
+      placeholder: |
+        1. Run `any-switch doctor ...`
+        2. Run `any-switch use ...`
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Paste redacted output or error text.
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: Paste redacted `any-switch doctor` / `status` output, or attach a redacted manual evidence file.
+      render: text
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety checklist
+      options:
+        - label: I have redacted secrets, tokens, capture blobs, and credential file contents.
+          required: true
+        - label: I can reproduce this with the app stopped for OAuth/process-sensitive operations, or I have explained why that is not applicable.
+          required: true

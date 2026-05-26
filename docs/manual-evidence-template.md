@@ -3,11 +3,12 @@
 Use this file as the release-candidate evidence record for the real app checks
 in `docs/manual-verification.md`. Attach command output snippets, redact secret
 values, and keep enough context for another maintainer to reproduce the result.
-You can initialize a local evidence file with `scripts/manual-evidence.sh`; the
-script only runs read-only diagnostics and redacts email / UUID-like identifiers,
-and it refuses to overwrite an existing evidence file. Unless `ANY_SWITCH_HOME`
-is already set, it uses a temporary switch home and removes it on exit. Complete
-the manual experiment sections below afterwards. Generated files named
+You can initialize a local evidence file with `scripts/manual-evidence.sh`, or
+with `scripts/manual-evidence.ps1` on Windows. The scripts only run read-only
+diagnostics and redact email addresses, UUID-like identifiers, and common JSON
+identity names, and Keychain account labels, and they refuse to overwrite an
+existing evidence file. Unless `ANY_SWITCH_HOME` is already set, they use a
+temporary switch home and remove it on exit. Complete the manual experiment sections below afterwards. Generated files named
 `manual-evidence-*.md` are ignored by Git; keep final release evidence in a
 private issue or release checklist unless the project explicitly chooses to
 publish a redacted record.
@@ -34,6 +35,36 @@ Evidence:
 paste command summary here
 ```
 
+## Evidence Summary
+
+Use `pending`, `passed`, `failed`, or `skipped: <linked issue>` as the status.
+For the current release stage, the macOS Claude OAuth import evidence is
+release-blocking. Broader restart, risk-experiment, Linux, and Windows evidence
+is deferred and must have follow-up tracking before this stage is released. Use
+`docs/evidence-followups.md` for in-repository tracking until a repository issue
+or release checklist exists. Do not claim full section 13 coverage while any
+deferred item is still pending, failed, or skipped.
+
+### Current-Stage Release Blockers
+
+| Item | Status | Evidence location or follow-up issue |
+|------|--------|---------------------------------------|
+| 2: macOS Claude OAuth import | pending | |
+
+### Deferred Follow-Up Evidence
+
+| Item | Status | Evidence location or follow-up issue |
+|------|--------|---------------------------------------|
+| 5-macOS: restart smoke tests | pending | `docs/evidence-followups.md` |
+| A-macOS: Claude refresh-token rotation | pending | `docs/evidence-followups.md` |
+| B-macOS: Claude source mismatch behavior | pending | `docs/evidence-followups.md` |
+| C-macOS: Claude runtime JSON sampling | pending | `docs/evidence-followups.md` |
+| E-macOS: Codex external restore flow | pending | `docs/evidence-followups.md` |
+| 3: Linux Claude OAuth import | pending | `docs/evidence-followups.md` |
+| 5-Linux: restart smoke tests | pending | `docs/evidence-followups.md` |
+| 5-Windows: restart smoke tests | pending | `docs/evidence-followups.md` |
+| W: Windows release smoke | pending | `docs/evidence-followups.md` |
+
 ## Item 2: Claude OAuth Import On macOS
 
 - [ ] Claude Code fully quit before OAuth commands.
@@ -51,12 +82,18 @@ Evidence:
 paste redacted command output here
 ```
 
+## Deferred Full-Coverage Experiments
+
+The following sections are not current-stage release blockers. Complete them
+before claiming full `docs/design.md` section 13 coverage, or keep their
+follow-up tracking current in `docs/evidence-followups.md`.
+
 ## Preflight A: Claude Refresh Token Rotation
 
 - [ ] Capture hashes recorded before Claude Code refresh.
 - [ ] Claude Code used long enough to trigger refresh, then quit.
-- [ ] `any-switch use claude-manual-macos --yes` completed or failed with the
-      expected safety error.
+- [ ] `any-switch use claude-manual-macos` was confirmed by typing `yes`, then
+      completed or failed with the expected safety error.
 - [ ] Capture hash / manifest behavior recorded.
 
 Conclusion:
@@ -112,7 +149,8 @@ paste redacted command output here
 
 ## Item 5: Restart Smoke Tests
 
-Run on macOS and Linux for each supported app available on that platform.
+Run on macOS, Linux, and Windows for each supported app/profile kind available
+on that platform.
 
 | OS | App | Profile A | Profile B | A visible after restart | B visible after restart | Pass |
 |----|-----|-----------|-----------|--------------------------|--------------------------|------|
@@ -122,6 +160,20 @@ Evidence:
 
 ```text
 paste redacted command output and app-visible observations here
+```
+
+## Windows Release Smoke Test
+
+- [ ] Windows archive checksum verified.
+- [ ] Archive extracted and contained `any-switch.exe`.
+- [ ] `any-switch.exe --version` succeeded.
+- [ ] `any-switch.exe apps` succeeded.
+- [ ] `any-switch.exe doctor` succeeded without packaging/startup failure.
+
+Evidence:
+
+```text
+paste redacted command output here
 ```
 
 ## Preflight E: Codex External Restore Flow
@@ -141,9 +193,12 @@ write observed import/refresh behavior here
 
 ## Final Decision
 
-- [ ] All required manual evidence passed.
-- [ ] Any deviations have linked follow-up issues.
-- [ ] Release candidate can claim full `docs/design.md` section 13 coverage.
+- [ ] Every current-stage release blocker is marked `passed`.
+- [ ] Deferred Linux / Windows evidence has linked follow-up tracking.
+- [ ] Any `failed` or `skipped` item has a linked follow-up issue.
+- [ ] Release notes describe this as a macOS-evidenced stage release and do not
+      claim full `docs/design.md` section 13 coverage until deferred evidence
+      is complete.
 
 Decision notes:
 

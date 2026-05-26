@@ -1,0 +1,83 @@
+name: Release checklist
+description: Track release evidence, artifacts, and publication notes.
+title: "[release]: v"
+labels: ["release"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this checklist before tagging or publishing a release. This records durable release evidence; it does not replace `scripts/verify-local.sh` or the GitHub Actions release workflow artifacts. Local ignored `manual-evidence-*.md` files are useful while preparing a release, but copy only their redacted conclusions or a maintainer-visible link here before relying on them. Do not paste secret values, OAuth capture blobs, API keys, Keychain values, or full local credential files.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Version and tag being prepared.
+      placeholder: v0.1.0
+    validations:
+      required: true
+  - type: dropdown
+    id: release_scope
+    attributes:
+      label: Release scope
+      options:
+        - macOS-evidenced stage release
+        - Full docs/design.md section 13 coverage
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Manual evidence
+      description: Link the durable redacted evidence record, private checklist, or issue that proves the selected release scope. Do not rely only on an ignored local file path.
+      placeholder: |
+        Current-stage blocker:
+        - 2: macOS Claude OAuth import: passed.
+          Evidence summary:
+          - `scripts/verify-local.sh` passed on macOS arm64.
+          - `any-switch doctor claude` reported no running Claude process before import.
+          - `any-switch import-current claude manual-macos --kind oauth_capture` succeeded.
+          - `any-switch show claude-manual-macos` showed `oauth_capture` and required identity fields, with values redacted.
+          - `any-switch status claude` reported `matched`.
+          Evidence link: ...
+
+        Deferred items:
+        - tracked in docs/evidence-followups.md or linked issues ...
+    validations:
+      required: true
+  - type: checkboxes
+    id: verification
+    attributes:
+      label: Verification
+      options:
+        - label: "`scripts/verify-local.sh` passed on the release commit."
+          required: true
+        - label: "`docs/manual-verification.md` was followed for the claimed release scope."
+          required: true
+        - label: "`docs/evidence-followups.md` or linked issues track every deferred manual evidence item."
+          required: true
+        - label: Any local ignored `manual-evidence-*.md` result used for this release has been copied into this checklist or a linked durable record after redaction.
+          required: true
+        - label: Release notes describe a macOS-evidenced stage release unless every section 13 manual evidence item has passed.
+          required: true
+  - type: checkboxes
+    id: artifacts
+    attributes:
+      label: Artifacts
+      options:
+        - label: "The tag matches the package version in `Cargo.toml`."
+          required: true
+        - label: GitHub Actions produced Linux x86_64, macOS x86_64, macOS arm64, and Windows x86_64 archives.
+          required: true
+        - label: Archive checksums were verified after publication.
+          required: true
+        - label: macOS signing/notarization status is recorded, or unsigned artifacts were intentionally accepted because signing secrets were absent.
+          required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety
+      options:
+        - label: No secret values, OAuth capture blobs, API keys, Keychain contents, or real credential files are attached or committed.
+          required: true
+        - label: "Public release notes do not claim full `docs/design.md` section 13 coverage while deferred evidence remains pending."
+          required: true

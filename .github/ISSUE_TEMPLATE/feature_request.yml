@@ -1,0 +1,51 @@
+name: Feature request
+description: Propose a new capability, handler, app definition, or release improvement.
+title: "[feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Prefer declarative app definitions and existing trusted handlers. New executable hooks, login automation, or account repair flows are outside the MVP safety model.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What user workflow is blocked or unsafe today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the app definition, handler, command, documentation, or release change.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - App definition
+        - Core handler
+        - CLI UX
+        - Documentation
+        - Release packaging
+        - Security or redaction
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Real-app evidence
+      description: For OAuth/app-specific behavior, include redacted observations and version details.
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety checklist
+      options:
+        - label: This request does not require printing or storing secrets in command output, history, or logs.
+          required: true
+        - label: If this is app-specific, I considered whether it can be handled by an app definition instead of hard-coded core logic.
+          required: true

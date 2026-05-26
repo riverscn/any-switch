@@ -25,7 +25,7 @@ use serde_json::{json, Value};
 use std::collections::BTreeSet;
 use std::env;
 use std::fs;
-use std::io::{self, IsTerminal, Read, Write};
+use std::io::{self, IsTerminal, Read};
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Component, Path, PathBuf};
@@ -36,7 +36,7 @@ use std::process::Command as ProcessCommand;
     name = "any-switch",
     version,
     about = "Switch local app profiles and state",
-    long_about = "Switch local app profiles and state through declarative app definitions.\n\nany-switch is not limited to AI CLI tools: it can manage any local software state that can be described as files, JSON/TOML subtrees, environment fragments, keychain entries, and similar targets. The current built-in definitions focus on Claude Code and Codex because they cover the hardest credential/state cases first.\n\nCommon flows:\n  any-switch import-current codex personal --yes\n  any-switch list\n  any-switch use codex-personal --yes\n  any-switch status codex\n  any-switch doctor\n\nSafety flags:\n  --yes confirms the displayed plan; it does not skip safety checks.\n  --allow-running is only for non-OAuth/static writes where live edits are acceptable.\n  --assume-app-stopped is only for OAuth/process-sensitive operations when process detection is a false positive, and must be paired with --yes."
+    long_about = "Switch local app profiles and state through declarative app definitions.\n\nany-switch is not limited to the bundled tools: it can manage any local software state that can be described as files, JSON/TOML subtrees, environment fragments, keychain entries, and similar targets. The current built-in definitions focus on Claude Code and Codex because they cover the hardest credential/state cases first.\n\nCommon flows:\n  any-switch apps\n  any-switch import-current <app> personal\n  any-switch list\n  any-switch use <profile-id> --dry-run\n  any-switch use <profile-id>\n  any-switch status <app>\n  any-switch doctor\n\nBuilt-in examples:\n  any-switch import-current codex personal\n  any-switch import-current claude work --kind oauth_capture\n  any-switch use claude-work\n\nSafety flags:\n  --yes confirms high-risk writes in scripts or other non-interactive runs; interactive terminals may omit it and type yes at the prompt instead.\n  --allow-running is only for non-OAuth/static writes where live edits are acceptable.\n  --assume-app-stopped is only for OAuth/process-sensitive operations when process detection is a false positive, and needs --yes or an interactive yes prompt."
 )]
 pub struct Cli {
     #[command(subcommand)]
@@ -55,7 +55,7 @@ enum Command {
     },
     #[command(about = "List configured profiles")]
     List {
-        #[arg(help = "Optional app id to filter by, for example codex or claude")]
+        #[arg(help = "Optional app id to filter by")]
         app: Option<String>,
         #[arg(long, help = "Emit machine-readable JSON")]
         json: bool,
@@ -69,7 +69,7 @@ enum Command {
     },
     #[command(
         about = "Add a static profile from explicit fields",
-        long_about = "Add a static profile from explicit fields.\n\nUse this for profile kinds whose values can be described directly as fields, such as API-key files, environment fragments, endpoint settings, model/provider selections, or other definition-declared static state. OAuth/dynamic credential profiles should normally be created with import-current instead.\n\nExamples:\n  any-switch add codex openai --kind file_template --secret-field api_key=@env:OPENAI_API_KEY --field model=gpt-5-codex\n  any-switch add claude glm --kind env_injection --field base_url=https://example.test --secret-field auth_token=@env:ANTHROPIC_AUTH_TOKEN --yes"
+        long_about = "Add a static profile from explicit fields.\n\nUse this for profile kinds whose values can be described directly as fields, such as API-key files, environment fragments, endpoint settings, model/provider selections, or other definition-declared static state. OAuth/dynamic credential profiles should normally be created with import-current instead. Field names come from the selected app definition and profile kind.\n\nSecret fields use @prompt, @stdin, @env:NAME, or @file:PATH so secret values do not have to appear in shell history or process arguments.\n\nExamples:\n  any-switch add <app> work --kind <kind> --field key=value\n  any-switch add codex openai --kind file_template --secret-field api_key=@prompt --field model=gpt-5-codex\n  any-switch add claude glm --kind env_injection --field base_url=https://example.test --secret-field auth_token=@env:ANTHROPIC_AUTH_TOKEN"
     )]
     Add(AddArgs),
     #[command(about = "Edit a profile in $VISUAL, $EDITOR, or the platform default editor")]
@@ -79,14 +79,14 @@ enum Command {
     },
     #[command(
         about = "Switch to a profile",
-        long_about = "Switch to a profile.\n\nFor OAuth profiles, any currently active OAuth profile is written back first, but only if the live identity still matches the active profile. If it does not match, the command stops with DriftBeforeWriteback so the wrong live credentials are not saved into the old profile.\n\nExamples:\n  any-switch use codex-personal --yes\n  any-switch use claude-work --assume-app-stopped --yes\n  any-switch detach codex\n  any-switch use codex-personal --yes",
-        after_help = "Next-step hints:\n  DriftBeforeWriteback: run `any-switch status <app>` to inspect drift. If you want to discard the current live state, run `any-switch detach <app>` and then retry `any-switch use <id> --yes`.\n  AppRunning on process-sensitive/OAuth profiles: close the app and retry. Use `--assume-app-stopped --yes` only when the process probe is a false positive.\n  AppRunning on static profiles: close the app, or retry with `--allow-running --yes` if editing live config is acceptable."
+        long_about = "Switch to a profile.\n\nFor OAuth profiles, any currently active OAuth profile is written back first, but only if the live identity still matches the active profile. If it does not match, the command stops with DriftBeforeWriteback so the wrong live credentials are not saved into the old profile.\n\nExamples:\n  any-switch use <profile-id> --dry-run\n  any-switch use <profile-id>\n  any-switch detach <app>\n  any-switch use codex-personal\n  any-switch use claude-work",
+        after_help = "Next-step hints:\n  DriftBeforeWriteback: run `any-switch status <app>` to inspect drift. If you want to discard the current live state, run `any-switch detach <app>` and then retry `any-switch use <id>`.\n  AppRunning on process-sensitive/OAuth profiles: close the app and retry. Use `--assume-app-stopped` only when the process probe is a false positive; confirm with `--yes` or the interactive prompt.\n  AppRunning on static profiles: close the app, or retry with `--allow-running` if editing live config is acceptable."
     )]
     Use(UseArgs),
     #[command(
         about = "Compare live app state with active profiles",
-        long_about = "Compare live app state with active profiles.\n\nstatus reads the app's managed targets and reports whether they match the profile recorded as active in any-switch state. It does not modify profiles, captures, backups, or live app files.\n\nTypical states:\n  matched: live state matches the active profile.\n  matched-with-overrides: managed state matches, but a higher-priority runtime override may change what the app actually uses.\n  drifted: live state no longer matches the active profile.\n  missing: expected live target files or capture blobs are absent.\n  no-active: any-switch is not currently tracking an active profile for the app.\n\nExamples:\n  any-switch status\n  any-switch status codex\n  any-switch status claude --json",
-        after_help = "Next-step hints:\n  drifted: run `any-switch doctor <app>` for details. For process-sensitive/OAuth profiles, import the live state if it is valuable, or `detach` before overwriting it with another profile.\n  no-active: run `any-switch import-current <app> <name> --yes` to capture the current state, or `any-switch use <profile-id> --yes` to apply an existing profile."
+        long_about = "Compare live app state with active profiles.\n\nstatus reads the app's managed targets and reports whether they match the profile recorded as active in any-switch state. It does not modify profiles, captures, backups, or live app files.\n\nTypical states:\n  matched: live state matches the active profile.\n  matched-with-overrides: managed state matches, but a higher-priority runtime override may change what the app actually uses.\n  drifted: live state no longer matches the active profile.\n  missing: expected live target files or capture blobs are absent.\n  no-active: any-switch is not currently tracking an active profile for the app.\n\nExamples:\n  any-switch status\n  any-switch status <app>\n  any-switch status codex --json",
+        after_help = "Next-step hints:\n  drifted: run `any-switch doctor <app>` for details. For process-sensitive/OAuth profiles, import the live state if it is valuable, or `detach` before overwriting it with another profile.\n  no-active: run `any-switch import-current <app> <name>` to capture the current state, or `any-switch use <profile-id>` to apply an existing profile."
     )]
     Status {
         #[arg(help = "Optional app id to inspect")]
@@ -94,14 +94,19 @@ enum Command {
         #[arg(long, help = "Emit machine-readable JSON")]
         json: bool,
     },
-    #[command(about = "List defensive backups created before writes")]
+    #[command(
+        about = "List defensive backups created before writes",
+        long_about = "List defensive backups created before writes.\n\nBackups are created automatically before `use` and `restore-target` overwrite managed live state. They are not profiles and do not change which profile is active. Use `restore-target` when you need to recover live files, structured subtrees, or keychain entries from one backup.",
+        after_help = "Examples:\n  any-switch backup list\n  any-switch backup list <app>\n  any-switch backup list codex --json\n  any-switch restore-target <app> <backup-id>"
+    )]
     Backup {
         #[command(subcommand)]
         command: BackupCommand,
     },
     #[command(
         about = "Restore live targets from a defensive backup",
-        after_help = "Next-step hints:\n  Process-sensitive/OAuth backups require the app to be stopped. If the probe is a false positive, retry with `--assume-app-stopped --yes`.\n  `--allow-running` only applies to non-OAuth/static targets."
+        long_about = "Restore live targets from a defensive backup.\n\nrestore-target writes the target files, structured subtrees, or keychain entries recorded in a backup manifest. It does not mark any profile active, so `status` may report `drifted` or `no-active` afterwards; use it when you need to recover local app state rather than switch to a profile.",
+        after_help = "Examples:\n  any-switch backup list <app>\n  any-switch restore-target <app> <backup-id>\n\nNext-step hints:\n  After restore, run `any-switch status <app>` to inspect whether the restored live state matches the active profile.\n  Process-sensitive/OAuth backups require the app to be stopped. If the probe is a false positive, retry with `--assume-app-stopped` and confirm with `--yes` or the interactive prompt.\n  `--allow-running` only applies to non-OAuth/static targets."
     )]
     RestoreTarget {
         #[arg(help = "App id whose target should be restored")]
@@ -111,7 +116,7 @@ enum Command {
         #[arg(
             long,
             short = 'y',
-            help = "Confirm restore; does not skip safety checks"
+            help = "Confirm restore non-interactively; does not skip safety checks"
         )]
         yes: bool,
         #[arg(
@@ -121,22 +126,25 @@ enum Command {
         allow_running: bool,
         #[arg(
             long,
-            help = "Process-sensitive/OAuth capture escape hatch for process-probe false positives; requires --yes"
+            help = "Process-sensitive/OAuth capture escape hatch for process-probe false positives; requires --yes or interactive confirmation"
         )]
         assume_app_stopped: bool,
     },
-    #[command(about = "Remove a profile and its managed capture files")]
+    #[command(
+        about = "Remove a profile and its managed capture files",
+        long_about = "Remove a profile and its managed capture files.\n\nremove deletes the profile from any-switch state and deletes any capture blobs owned by that profile. It does not clear, restore, or rewrite the target app's current live files or credentials. If the removed profile is currently active, the app is detached and `status` will report `no-active` until you import or use another profile.",
+        after_help = "Examples:\n  any-switch remove <profile-id>\n  any-switch remove codex-old\n\nNext-step hints:\n  To change live app state before removing a profile, run `any-switch use <profile-id>` or `any-switch restore-target <app> <backup-id>` first."
+    )]
     Remove {
         #[arg(help = "Profile id to remove")]
         id: String,
-        #[arg(long, short = 'y', help = "Confirm removal")]
+        #[arg(long, short = 'y', help = "Confirm removal non-interactively")]
         yes: bool,
-        #[arg(long, help = "Alias for --yes")]
-        force: bool,
     },
     #[command(
         about = "Clear the active profile for an app without touching live files",
-        long_about = "Clear the active profile for an app without touching live files.\n\nUse this when live state has drifted and you do not want any-switch to write it back into the currently recorded OAuth profile. After detach, either import the live state as a new profile or use an existing profile to overwrite live state."
+        long_about = "Clear the active profile for an app without touching live files.\n\nUse this when live state has drifted and you do not want any-switch to write it back into the currently recorded profile. The recommended next step is `any-switch import-current <app> <name>` to capture the current live state. `any-switch use <profile-id>` remains allowed, but it will overwrite live state with the selected profile without first writing the current state back.",
+        after_help = "Examples:\n  any-switch detach claude\n  any-switch import-current claude current-state\n\nRollback option:\n  any-switch use <profile-id>\n\nThe rollback option overwrites live state and does not write back first."
     )]
     Detach {
         #[arg(help = "App id to detach")]
@@ -145,7 +153,7 @@ enum Command {
     #[command(
         about = "Inspect app definitions, live state, and local safety warnings",
         long_about = "Inspect app definitions, live state, and local safety warnings.\n\ndoctor is broader than status: it reports definition loading problems, target summaries, process probes, backup usage, permissions, stale captures, known-schema warnings, and local environment risks. It is read-only.",
-        after_help = "Examples:\n  any-switch doctor\n  any-switch doctor codex\n  any-switch doctor claude --json"
+        after_help = "Examples:\n  any-switch doctor\n  any-switch doctor <app>\n  any-switch doctor codex --json"
     )]
     Doctor {
         #[arg(help = "Optional app id to inspect")]
@@ -153,7 +161,10 @@ enum Command {
         #[arg(long, help = "Emit machine-readable JSON")]
         json: bool,
     },
-    #[command(about = "Show any-switch configuration paths")]
+    #[command(
+        about = "Show any-switch configuration paths",
+        after_help = "Examples:\n  any-switch config path\n\n`config path` prints the active profiles.yaml path. Use `any-switch doctor` to see the any-switch home directory, permission checks, and local safety warnings."
+    )]
     Config {
         #[command(subcommand)]
         command: ConfigCommand,
@@ -161,10 +172,10 @@ enum Command {
     #[command(
         about = "Import the app's current live state as a profile",
         long_about = "Import the app's current live state as a profile.\n\nWith --kind auto, any-switch detects one importable state. If multiple states are present, pass --kind explicitly. OAuth imports capture dynamic credential files and require the app to be stopped; static API-key/env imports create editable profiles from live config.",
-        after_help = "Examples:\n  any-switch import-current codex personal --yes\n  any-switch import-current codex youheal --kind file_template --yes\n  any-switch import-current claude personal --kind oauth_capture --assume-app-stopped --yes\n\nNext-step hints:\n  ImportAmbiguous: pass `--kind <kind>` if multiple valid states are present, or clean up the app's live auth files.\n  IdentityMissing on process-sensitive/OAuth state: the detected credential lacks required identity fields; run `any-switch doctor <app>` and check whether the app is logged in.\n  AppRunning on process-sensitive/OAuth import: close the app and retry. Use `--assume-app-stopped --yes` only for false-positive process probes."
+        after_help = "Examples:\n  any-switch import-current <app> personal\n  any-switch import-current codex personal\n  any-switch import-current codex work --kind file_template\n  any-switch import-current claude personal --kind oauth_capture\n\nNext-step hints:\n  ImportAmbiguous: pass `--kind <kind>` if multiple valid states are present, or clean up the app's live auth files.\n  IdentityMissing on process-sensitive/OAuth state: the detected credential lacks required identity fields; run `any-switch doctor <app>` and check whether the app is logged in.\n  AppRunning on process-sensitive/OAuth import: close the app and retry. Use `--assume-app-stopped` only for false-positive process probes; confirm with `--yes` or the interactive prompt."
     )]
     ImportCurrent {
-        #[arg(help = "App id, for example codex or claude")]
+        #[arg(help = "App id from an app definition")]
         app: String,
         #[arg(help = "Human-friendly profile name; id defaults to <app>-<slug(name)>")]
         name: String,
@@ -183,13 +194,13 @@ enum Command {
         allow_running: bool,
         #[arg(
             long,
-            help = "Process-sensitive/OAuth capture escape hatch for process-probe false positives; requires --yes"
+            help = "Process-sensitive/OAuth capture escape hatch for process-probe false positives; requires --yes or interactive confirmation"
         )]
         assume_app_stopped: bool,
         #[arg(
             long,
             short = 'y',
-            help = "Confirm the import; does not skip safety checks"
+            help = "Non-interactive confirmation for --assume-app-stopped; does not skip safety checks"
         )]
         yes: bool,
     },
@@ -211,9 +222,18 @@ enum AppsCommand {
     Export {
         #[arg(help = "App id to export")]
         app: String,
-        #[arg(long, default_value = "system", help = "Definition source to export")]
+        #[arg(
+            long,
+            default_value = "system",
+            value_parser = ["system", "resolved"],
+            help = "Definition source to export: system or resolved"
+        )]
         source: String,
-        #[arg(long = "as", help = "Export as system definition or override template")]
+        #[arg(
+            long = "as",
+            value_parser = ["override"],
+            help = "Output shape; currently only override is supported"
+        )]
         as_kind: Option<String>,
         #[arg(long, help = "Output path; stdout when omitted")]
         output: Option<PathBuf>,
@@ -229,7 +249,10 @@ enum AppsCommand {
 
 #[derive(Debug, Subcommand)]
 enum BackupCommand {
-    #[command(about = "List defensive backups")]
+    #[command(
+        about = "List defensive backups",
+        long_about = "List defensive backups.\n\nEach row is a backup id that can be passed to `any-switch restore-target <app> <backup-id>`. Restore operations do not mark a profile active; run `any-switch status <app>` after restore to inspect the live state."
+    )]
     List {
         #[arg(help = "Optional app id to filter by")]
         app: Option<String>,
@@ -240,13 +263,16 @@ enum BackupCommand {
 
 #[derive(Debug, Subcommand)]
 enum ConfigCommand {
-    #[command(about = "Print the any-switch home directory")]
+    #[command(
+        about = "Print the active profiles.yaml path",
+        long_about = "Print the active profiles.yaml path.\n\nThis is the main editable any-switch profile registry. It may be the default ~/.any-switch/profiles.yaml or a path under ANY_SWITCH_HOME when that environment variable is set."
+    )]
     Path,
 }
 
 #[derive(Debug, Args)]
 struct AddArgs {
-    #[arg(help = "App id from an app definition, for example codex or claude")]
+    #[arg(help = "App id from an app definition")]
     app: String,
     #[arg(help = "Human-friendly profile name; id defaults to <app>-<slug(name)>")]
     name: String,
@@ -264,7 +290,7 @@ struct AddArgs {
     fields: Vec<String>,
     #[arg(
         long = "secret-field",
-        help = "Set a secret field, as key=value or key=@env:VAR; repeatable"
+        help = "Set a secret field, as key=@prompt, key=@stdin, key=@env:NAME, or key=@file:PATH; repeatable"
     )]
     secret_fields: Vec<String>,
     #[arg(long, help = "Replace an existing profile with the same id")]
@@ -280,7 +306,7 @@ struct UseArgs {
     #[arg(
         long,
         short = 'y',
-        help = "Confirm the plan; does not skip safety checks"
+        help = "Confirm the plan non-interactively; does not skip safety checks"
     )]
     yes: bool,
     #[arg(long, help = "Emit machine-readable JSON")]
@@ -292,7 +318,7 @@ struct UseArgs {
     allow_running: bool,
     #[arg(
         long,
-        help = "Process-sensitive operation escape hatch for process-probe false positives; requires --yes"
+        help = "Process-sensitive operation escape hatch for process-probe false positives; requires --yes or interactive confirmation"
     )]
     assume_app_stopped: bool,
     #[arg(
@@ -376,7 +402,7 @@ pub fn run() -> Result<()> {
             allow_running,
             assume_app_stopped,
         ),
-        Command::Remove { id, yes, force } => remove_command(&paths, &id, yes || force),
+        Command::Remove { id, yes } => remove_command(&paths, &id, yes),
         Command::Detach { app } => {
             let registry = DefinitionRegistry::load(&paths)?;
             detach_command(&paths, &registry, &app)
@@ -619,7 +645,11 @@ fn add_command(paths: &Paths, registry: &DefinitionRegistry, args: AddArgs) -> R
     let mut store = ProfileStore::load(paths)?;
     if store.find(&id).is_some() {
         if !args.force {
-            return Err(anyhow!("ProfileExists: {id}"));
+            return Err(profile_exists_error(
+                &id,
+                "choose a different name or pass `--id <id>`",
+                "use `--force` only to replace an existing non-OAuth profile with the same app and kind",
+            ));
         }
         let existing = store.find(&id).expect("checked existing profile").clone();
         if existing.app != args.app
@@ -786,6 +816,11 @@ fn import_current_command(
     options: ImportCurrentOptions<'_>,
 ) -> Result<()> {
     let app = options.app;
+    if options.yes && !options.assume_app_stopped {
+        return Err(anyhow!(
+            "import-current --yes is only valid with --assume-app-stopped"
+        ));
+    }
     let _profiles_lock = FileLock::acquire(lock::profiles_lock(paths))?;
     let _app_lock = FileLock::acquire(lock::app_lock(paths, app)?)?;
     let loaded = registry.get(app)?;
@@ -813,12 +848,13 @@ fn import_current_command(
     }
 
     let draft = drafts.remove(0);
+    let mut confirmation = Confirmation::new(options.yes);
     let process_warnings = enforce_process_rule(
         &loaded.definition,
         draft.kind() == "oauth_capture",
         options.allow_running,
         options.assume_app_stopped,
-        options.yes,
+        &mut confirmation,
     )?;
     let mut store = ProfileStore::load(paths)?;
     store.ensure_writable_schema()?;
@@ -827,11 +863,15 @@ fn import_current_command(
     let mut updated_existing = false;
     match draft {
         ImportDraft::Static { kind, fields } => {
-            if store.find(&requested_id).is_some() {
-                return Err(anyhow!("ProfileExists: {requested_id}"));
-            }
             let profile = new_profile(app, &kind, options.name, requested_id.clone(), fields);
             validate_static_profile(&loaded.definition, &profile)?;
+            if store.find(&requested_id).is_some() {
+                return Err(profile_exists_error(
+                    &requested_id,
+                    "choose a different name or pass `--id <id>`",
+                    "static imports cannot refresh an existing profile; remove or edit the old profile first",
+                ));
+            }
             store.profiles.push(profile);
             store.save(paths)?;
         }
@@ -851,13 +891,14 @@ fn import_current_command(
                 ));
             }
             let capture_value = capture.to_value()?;
-            if let Some(index) = oauth_import_update_index(
+            let update_index = oauth_import_update_index(
                 &store,
                 &loaded.definition,
                 app,
                 &requested_id,
                 &identity,
-            )? {
+            )?;
+            if let Some(index) = update_index {
                 imported_id = store.profiles[index].id.clone();
                 store.profiles[index].identity = identity;
                 store.profiles[index].capture = Some(capture_value);
@@ -923,6 +964,46 @@ fn import_current_command(
         println!("imported {imported_id}");
     }
     Ok(())
+}
+
+struct Confirmation {
+    yes: bool,
+    interactive_confirmed: bool,
+}
+
+impl Confirmation {
+    fn new(yes: bool) -> Self {
+        Self {
+            yes,
+            interactive_confirmed: false,
+        }
+    }
+
+    fn confirm(&mut self, action: &str) -> Result<()> {
+        if self.yes || self.interactive_confirmed {
+            return Ok(());
+        }
+        if !io::stdin().is_terminal() {
+            return Err(anyhow!(
+                "{action} requires confirmation\n\nNext steps:\n  - Review the command and target state.\n  - In a terminal, rerun and type `yes` at the prompt.\n  - In scripts or CI, rerun with `--yes` only if you intend to perform this write."
+            ));
+        }
+        use std::io::Write;
+        eprint!("Proceed with {action}? Type 'yes' to continue: ");
+        io::stderr().flush()?;
+        let mut line = String::new();
+        io::stdin().read_line(&mut line)?;
+        if line.trim() == "yes" {
+            self.interactive_confirmed = true;
+            Ok(())
+        } else {
+            Err(anyhow!("Aborted: {action} was not confirmed"))
+        }
+    }
+}
+
+fn profile_exists_error(id: &str, first_step: &str, second_step: &str) -> anyhow::Error {
+    anyhow!("ProfileExists: {id}\n\nNext steps:\n  - {first_step}.\n  - {second_step}.")
 }
 
 fn oauth_import_update_index(
@@ -1296,14 +1377,8 @@ fn definition_source_applies_to_current_platform(source: &CaptureSourceDefinitio
     if source.platforms.is_empty() {
         return true;
     }
-    let current = if cfg!(target_os = "macos") {
-        "macos"
-    } else if cfg!(target_os = "windows") {
-        "windows"
-    } else {
-        "linux"
-    };
-    source.platforms.iter().any(|platform| platform == current)
+    let current = crate::capture::current_platform();
+    source.platforms.iter().any(|platform| platform == &current)
 }
 
 fn capture_definition_oauth_target(
@@ -1699,12 +1774,13 @@ fn use_command(paths: &Paths, registry: &DefinitionRegistry, args: UseArgs) -> R
         || previous_profile
             .as_ref()
             .is_some_and(|previous| previous.kind == "oauth_capture");
+    let mut confirmation = Confirmation::new(args.yes);
     let process_warnings = enforce_process_rule(
         &loaded.definition,
         oauth_io_required,
         args.allow_running,
         args.assume_app_stopped,
-        args.yes,
+        &mut confirmation,
     )?;
     if profile.kind == "oauth_capture" {
         capture::ensure_capture_complete(paths, profile)?;
@@ -1791,9 +1867,7 @@ fn use_command(paths: &Paths, registry: &DefinitionRegistry, args: UseArgs) -> R
         }
         return Ok(());
     }
-    if !args.yes {
-        return Err(anyhow!("use requires --yes in this build"));
-    }
+    confirmation.confirm("use")?;
 
     if previous_id.as_deref() == Some(profile.id.as_str()) && profile.kind == "oauth_capture" {
         writeback_oauth_profile(paths, &loaded.definition, profile)?;
@@ -1929,9 +2003,7 @@ fn restore_target_command(
     allow_running: bool,
     assume_app_stopped: bool,
 ) -> Result<()> {
-    if !yes {
-        return Err(anyhow!("restore-target requires --yes in this build"));
-    }
+    let mut confirmation = Confirmation::new(yes);
     let _app_lock = FileLock::acquire(lock::app_lock(paths, app)?)?;
     if let Some(pending) = load_pending(paths, app)? {
         let store = ProfileStore::load(paths)?;
@@ -1961,8 +2033,9 @@ fn restore_target_command(
         oauth_io_required,
         allow_running,
         assume_app_stopped,
-        yes,
+        &mut confirmation,
     )?;
+    confirmation.confirm("restore-target")?;
     let rollback_inputs = restore_inputs;
     let rollback_id = backup::create_backup_with_inputs(paths, app, &rollback_inputs)?;
     let operation_id = uuid::Uuid::now_v7().to_string();
@@ -2505,13 +2578,24 @@ fn enforce_process_rule(
     oauth_io_required: bool,
     allow_running: bool,
     assume_app_stopped: bool,
-    yes: bool,
+    confirmation: &mut Confirmation,
 ) -> Result<Vec<Value>> {
+    if !oauth_io_required && assume_app_stopped {
+        return Err(anyhow!(
+            "InvalidSafetyFlag: --assume-app-stopped only applies to OAuth/process-sensitive operations\n\nNext steps:\n  - Close the app and retry.\n  - For non-OAuth static writes, retry with `--allow-running` if editing live config while the app runs is acceptable."
+        ));
+    }
     let running = process::detect_running(definition)?;
     if running.is_empty() {
+        if assume_app_stopped {
+            return Err(anyhow!(
+                "InvalidSafetyFlag: --assume-app-stopped was provided, but no running app process was detected\n\nNext steps:\n  - Retry without `--assume-app-stopped`.\n  - Use `--assume-app-stopped` only when process detection reports a false positive."
+            ));
+        }
         return Ok(Vec::new());
     }
-    if oauth_io_required && assume_app_stopped && yes {
+    if oauth_io_required && assume_app_stopped {
+        confirmation.confirm("assume-app-stopped and continue OAuth capture operation")?;
         return Ok(vec![json!({
             "type": "assume_app_stopped",
             "processes": running.iter().map(|process| json!({
@@ -2521,15 +2605,10 @@ fn enforce_process_rule(
             })).collect::<Vec<_>>()
         })]);
     }
-    if oauth_io_required && assume_app_stopped && !yes {
-        return Err(anyhow!(
-            "--assume-app-stopped requires --yes for OAuth capture operations\n\nNext steps:\n  - If the app is actually stopped and this is a process-probe false positive, retry with `--assume-app-stopped --yes`.\n  - Otherwise close the app and retry without this flag."
-        ));
-    }
     if oauth_io_required && allow_running {
         let mut message = process::format_app_running(&definition.app.id, &running);
         message.push_str(
-            "\n\n`--allow-running` does not apply to OAuth capture operations because tokens can rotate while the app is running.\n\nNext steps:\n  - Close the app and retry.\n  - If the listed process is a false positive, retry with `--assume-app-stopped --yes`.",
+            "\n\n`--allow-running` does not apply to OAuth capture operations because tokens can rotate while the app is running.\n\nNext steps:\n  - Close the app and retry.\n  - If the listed process is a false positive, retry with `--assume-app-stopped` and confirm with `--yes` or the interactive prompt.",
         );
         return Err(anyhow!(message));
     }
@@ -2537,11 +2616,11 @@ fn enforce_process_rule(
         let mut message = process::format_app_running(&definition.app.id, &running);
         if oauth_io_required {
             message.push_str(
-                "\n\nNext steps:\n  - Close the app and retry.\n  - If the listed process is a false positive, retry with `--assume-app-stopped --yes`.",
+                "\n\nNext steps:\n  - Close the app and retry.\n  - If the listed process is a false positive, retry with `--assume-app-stopped` and confirm with `--yes` or the interactive prompt.",
             );
         } else {
             message.push_str(
-                "\n\nNext steps:\n  - Close the app and retry.\n  - For non-OAuth static writes, retry with `--allow-running --yes` if editing live config while the app runs is acceptable.",
+                "\n\nNext steps:\n  - Close the app and retry.\n  - For non-OAuth static writes, retry with `--allow-running` if editing live config while the app runs is acceptable.",
             );
         }
         return Err(anyhow!(message));
@@ -2861,7 +2940,7 @@ fn writeback_oauth_profile(
         &live_identity,
     )? {
         return Err(anyhow!(
-            "DriftBeforeWriteback: live identity no longer matches active profile {}\n\nNext steps:\n  - Run `any-switch status {}` to inspect the drift.\n  - If the live state belongs to a new account/profile, run `any-switch import-current {} <name> --yes`.\n  - If you want to discard the current live state and restore a saved profile, run `any-switch detach {}` first, then retry `any-switch use <profile-id> --yes`.",
+            "DriftBeforeWriteback: live identity no longer matches active profile {}\n\nNext steps:\n  - Run `any-switch status {}` to inspect the drift.\n  - If the live state belongs to a new account/profile, run `any-switch import-current {} <name>`.\n  - If you want to discard the current live state and restore a saved profile, run `any-switch detach {}` first, then retry `any-switch use <profile-id>`.",
             profile.id,
             definition.app.id,
             definition.app.id,
@@ -3452,9 +3531,8 @@ fn merge_json_objects(base: &mut Value, overlay: Value) {
 }
 
 fn remove_command(paths: &Paths, id: &str, yes: bool) -> Result<()> {
-    if !yes {
-        return Err(anyhow!("remove requires --yes or --force in this build"));
-    }
+    let mut confirmation = Confirmation::new(yes);
+    confirmation.confirm("remove")?;
     let _profiles_lock = FileLock::acquire(lock::profiles_lock(paths))?;
     let mut store = ProfileStore::load(paths)?;
     let profile = store
@@ -3799,6 +3877,11 @@ fn doctor_definition_records(paths: &Paths, definition: &AppDefinition) -> Resul
         paths, definition,
     )?);
     for (kind_name, kind) in &definition.kinds {
+        for source in &kind.capture_sources {
+            if let Some(record) = doctor_capture_source_record(paths, kind_name, source)? {
+                records.push(record);
+            }
+        }
         for target in &kind.targets {
             let path = match paths.expand_target_path(&target.path) {
                 Ok(path) => path,
@@ -4032,6 +4115,11 @@ fn doctor_definition(paths: &Paths, definition: &AppDefinition) -> Result<()> {
     doctor_definition_json_fields(paths, definition)?;
     doctor_definition_json_object_schemas(paths, definition)?;
     for (kind_name, kind) in &definition.kinds {
+        for source in &kind.capture_sources {
+            if let Some(record) = doctor_capture_source_record(paths, kind_name, source)? {
+                print_doctor_capture_source_record(&record)?;
+            }
+        }
         for target in &kind.targets {
             let path = match paths.expand_target_path(&target.path) {
                 Ok(path) => path,
@@ -4086,6 +4174,113 @@ fn doctor_definition(paths: &Paths, definition: &AppDefinition) -> Result<()> {
                 Err(err) => println!("definition_identity\t{kind_name}\twarning: {err}"),
             }
         }
+    }
+    Ok(())
+}
+
+fn doctor_capture_source_record(
+    paths: &Paths,
+    kind_name: &str,
+    source: &CaptureSourceDefinition,
+) -> Result<Option<Value>> {
+    if !definition_source_applies_to_current_platform(source) {
+        return Ok(None);
+    }
+    let mut record = json!({
+        "type": "capture_source",
+        "kind": kind_name,
+        "handler": source.handler,
+        "stored_as": source.stored_as,
+        "required": source.required,
+    });
+    match source.handler.as_str() {
+        "file_capture" => {
+            let path_template = source
+                .path
+                .as_deref()
+                .ok_or_else(|| anyhow!("file_capture source {} missing path", source.stored_as))?;
+            match paths.expand_target_path(path_template) {
+                Ok(path) => {
+                    record["status"] = json!(if path.exists() { "exists" } else { "missing" });
+                    record["path"] = json!(path);
+                }
+                Err(err) => {
+                    record["status"] = json!("warning");
+                    record["warning"] = json!(err.to_string());
+                    record["hint"] = json!(capture_source_warning_hint("file_capture"));
+                    record["path_template"] = json!(path_template);
+                }
+            }
+        }
+        "secret_entry" => {
+            let service = source.service.as_deref().ok_or_else(|| {
+                anyhow!("secret_entry source {} missing service", source.stored_as)
+            })?;
+            let account = source.account.as_deref().ok_or_else(|| {
+                anyhow!("secret_entry source {} missing account", source.stored_as)
+            })?;
+            let resolved_account =
+                account.replace("${MACOS_USER}", &crate::paths::current_os_user());
+            record["backend"] = json!(source.backend);
+            record["service"] = json!(service);
+            record["account"] = json!(account);
+            record["resolved_account"] = json!(resolved_account);
+            match crate::keychain::generic_password_exists(service, &resolved_account) {
+                Ok(true) => record["status"] = json!("exists"),
+                Ok(false) => record["status"] = json!("missing"),
+                Err(err) => {
+                    let err = err.to_string();
+                    record["status"] = json!("warning");
+                    record["hint"] = json!(capture_source_warning_hint("secret_entry"));
+                    record["warning"] = json!(err);
+                }
+            }
+        }
+        other => {
+            record["status"] = json!("warning");
+            record["warning"] = json!(format!(
+                "UnknownHandler: unsupported capture source {other}"
+            ));
+        }
+    }
+    Ok(Some(record))
+}
+
+fn capture_source_warning_hint(handler: &str) -> &'static str {
+    match handler {
+        "secret_entry" => {
+            "Run doctor from a local desktop terminal and approve Keychain access if prompted; verify the item metadata with `security find-generic-password` without `-w`; if it is missing, log in with the app first."
+        }
+        "file_capture" => {
+            "Check whether the app's credentials file path is correct for this platform and whether CLAUDE_CONFIG_DIR or similar config-dir environment variables point inside your home directory."
+        }
+        _ => "Inspect the app definition and live target path, then rerun doctor.",
+    }
+}
+
+fn print_doctor_capture_source_record(record: &Value) -> Result<()> {
+    let kind = record["kind"].as_str().unwrap_or("<unknown>");
+    let handler = record["handler"].as_str().unwrap_or("<unknown>");
+    let status = record["status"].as_str().unwrap_or("warning");
+    let stored_as = record["stored_as"].as_str().unwrap_or("<unknown>");
+    match status {
+        "warning" => println!(
+            "definition_capture_source\t{kind}\t{handler}\twarning: {}\t{stored_as}\thint: {}",
+            record["warning"].as_str().unwrap_or("unknown warning"),
+            record["hint"].as_str().unwrap_or("inspect the app definition and live target")
+        ),
+        _ if handler == "file_capture" => println!(
+            "definition_capture_source\t{kind}\t{handler}\t{status}\t{stored_as}\t{}",
+            record["path"].as_str().unwrap_or("")
+        ),
+        _ if handler == "secret_entry" => println!(
+            "definition_capture_source\t{kind}\t{handler}\t{status}\t{stored_as}\tservice={}\taccount={}",
+            record["service"].as_str().unwrap_or(""),
+            record["resolved_account"].as_str().unwrap_or("")
+        ),
+        _ => println!(
+            "definition_capture_source\t{kind}\t{handler}\t{status}\t{stored_as}"
+        ),
     }
     Ok(())
 }
@@ -4314,6 +4509,7 @@ fn read_secret_prompt() -> Result<String> {
 
 #[cfg(unix)]
 fn read_secret_prompt_from_tty() -> Result<String> {
+    use std::io::Write;
     use std::os::fd::AsRawFd;
 
     eprint!("secret: ");
@@ -4340,7 +4536,40 @@ fn read_secret_prompt_from_tty() -> Result<String> {
     Ok(value.trim_end_matches(['\r', '\n']).to_string())
 }
 
-#[cfg(not(unix))]
+#[cfg(windows)]
+fn read_secret_prompt_from_tty() -> Result<String> {
+    use std::io::Write;
+    use windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE;
+    use windows_sys::Win32::System::Console::{
+        GetConsoleMode, GetStdHandle, SetConsoleMode, ENABLE_ECHO_INPUT, STD_INPUT_HANDLE,
+    };
+
+    eprint!("secret: ");
+    io::stderr().flush()?;
+    let handle = unsafe { GetStdHandle(STD_INPUT_HANDLE) };
+    if handle == INVALID_HANDLE_VALUE || handle.is_null() {
+        return Err(std::io::Error::last_os_error()).context("open stdin console");
+    }
+    let mut mode = 0;
+    if unsafe { GetConsoleMode(handle, &mut mode) } == 0 {
+        return Err(std::io::Error::last_os_error()).context("read console mode");
+    }
+    let hidden_mode = mode & !ENABLE_ECHO_INPUT;
+    if unsafe { SetConsoleMode(handle, hidden_mode) } == 0 {
+        return Err(std::io::Error::last_os_error()).context("disable console echo");
+    }
+    let mut value = String::new();
+    let read_result = io::stdin().read_line(&mut value);
+    let restore_result = unsafe { SetConsoleMode(handle, mode) };
+    eprintln!();
+    if restore_result == 0 {
+        return Err(std::io::Error::last_os_error()).context("restore console echo");
+    }
+    read_result?;
+    Ok(value.trim_end_matches(['\r', '\n']).to_string())
+}
+
+#[cfg(not(any(unix, windows)))]
 fn read_secret_prompt_from_tty() -> Result<String> {
     Err(anyhow!(
         "@prompt is not implemented on this platform; use @stdin, @env:NAME, or @file:PATH"

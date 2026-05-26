@@ -161,16 +161,27 @@ impl CaptureSourceSpec {
         if self.platforms.is_empty() {
             return true;
         }
-        let current = if cfg!(target_os = "macos") {
-            "macos"
-        } else if cfg!(target_os = "linux") {
-            "linux"
-        } else if cfg!(target_os = "windows") {
-            "windows"
-        } else {
-            "unknown"
-        };
-        self.platforms.iter().any(|platform| platform == current)
+        let current = current_platform();
+        self.platforms.iter().any(|platform| platform == &current)
+    }
+}
+
+pub(crate) fn current_platform() -> String {
+    #[cfg(debug_assertions)]
+    if let Ok(platform) = std::env::var("ANY_SWITCH_TEST_PLATFORM") {
+        if matches!(platform.as_str(), "macos" | "linux" | "windows") {
+            return platform;
+        }
+    }
+
+    if cfg!(target_os = "macos") {
+        "macos".to_string()
+    } else if cfg!(target_os = "linux") {
+        "linux".to_string()
+    } else if cfg!(target_os = "windows") {
+        "windows".to_string()
+    } else {
+        "unknown".to_string()
     }
 }
 
@@ -497,6 +508,7 @@ fn ensure_capture_path_inside_dir(dir: &Path, path: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
     use crate::paths::Paths;
     use crate::profiles::Profile;
     use indexmap::IndexMap;

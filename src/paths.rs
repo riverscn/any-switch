@@ -352,8 +352,16 @@ pub(crate) fn current_os_user() -> String {
         }
         "unknown".to_string()
     }
-    #[cfg(not(unix))]
-    env::var("USER").unwrap_or_else(|_| "unknown".to_string())
+    #[cfg(windows)]
+    {
+        env::var("USERNAME")
+            .or_else(|_| env::var("USER"))
+            .unwrap_or_else(|_| "unknown".to_string())
+    }
+    #[cfg(all(not(unix), not(windows)))]
+    {
+        env::var("USER").unwrap_or_else(|_| "unknown".to_string())
+    }
 }
 
 #[cfg(test)]
@@ -361,10 +369,8 @@ mod tests {
     use super::*;
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
-    #[cfg(unix)]
     use std::sync::{Mutex, OnceLock};
 
-    #[cfg(unix)]
     static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
     #[test]
@@ -390,6 +396,30 @@ mod tests {
             env::remove_var("USER");
         }
         assert_ne!(user, "spoofed-any-switch-user");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn current_os_user_prefers_username_on_windows() {
+        let _guard = ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
+        let previous_user = env::var_os("USER");
+        let previous_username = env::var_os("USERNAME");
+        env::set_var("USER", "wrong-user");
+        env::set_var("USERNAME", "right-user");
+
+        let user = current_os_user();
+
+        if let Some(previous_user) = previous_user {
+            env::set_var("USER", previous_user);
+        } else {
+            env::remove_var("USER");
+        }
+        if let Some(previous_username) = previous_username {
+            env::set_var("USERNAME", previous_username);
+        } else {
+            env::remove_var("USERNAME");
+        }
+        assert_eq!(user, "right-user");
     }
 
     #[cfg(unix)]

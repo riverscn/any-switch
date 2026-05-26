@@ -90,6 +90,7 @@ dependencies = [
  "thiserror",
  "toml_edit",
  "uuid",
+ "windows-sys",
 ]
 
 [[package]]

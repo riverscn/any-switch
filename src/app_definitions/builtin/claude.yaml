@@ -113,6 +113,7 @@ kinds:
         path: ${CLAUDE_CONFIG_DIR:-~/.claude}/.credentials.json
         stored_as: credentials.json
         required: true
+        platforms: [linux]
     cleanup_targets:
       - handler: json_remove_keys
         path: ~/.claude/settings.json

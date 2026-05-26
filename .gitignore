@@ -1,8 +1,12 @@
 /target
 .DS_Store
+.any-switch/
+.any-switch-*
 .smoke-*
 .test-*
 manual-evidence-*.md
 !docs/manual-evidence-template.md
-.claude/settings.local.json
+.claude/
+.codex/
 .tmp
+.tmp-*

@@ -57,6 +57,96 @@ fn add_rejects_invalid_field_keys() {
 }
 
 #[test]
+fn add_does_not_require_yes_and_rejects_unused_yes() {
+    let switch_home = tempdir().unwrap();
+    Command::cargo_bin("any-switch")
+        .unwrap()
+        .env("ANY_SWITCH_HOME", switch_home.path())
+        .env("ANY_SWITCH_TEST_HOME", switch_home.path().parent().unwrap())
+        .env("TEST_API_KEY", "sk-test")
+        .args([
+            "add",
+            "codex",
+            "without-yes",
+            "--kind",
+            "file_template",
+            "--field",
+            "model=gpt-5-codex",
+            "--secret-field",
+            "api_key=@env:TEST_API_KEY",
+        ])
+        .assert()
+        .success()
+        .stdout(contains("added codex-without-yes"));
+
+    Command::cargo_bin("any-switch")
+        .unwrap()
+        .env("ANY_SWITCH_HOME", switch_home.path())
+        .env("ANY_SWITCH_TEST_HOME", switch_home.path().parent().unwrap())
+        .env("TEST_API_KEY", "sk-test")
+        .args([
+            "add",
+            "--yes",
+            "codex",
+            "with-yes",
+            "--kind",
+            "file_template",
+            "--field",
+            "model=gpt-5-codex",
+            "--secret-field",
+            "api_key=@env:TEST_API_KEY",
+        ])
+        .assert()
+        .failure()
+        .stderr(contains("unexpected argument '--yes'"));
+}
+
+#[test]
+fn use_without_yes_requires_confirmation_in_non_tty() {
+    let cwd = std::env::current_dir().unwrap();
+    let switch_home = tempfile::Builder::new()
+        .prefix(".test-switch-")
+        .tempdir_in(&cwd)
+        .unwrap();
+    let codex_home = tempfile::Builder::new()
+        .prefix(".test-codex-")
+        .tempdir_in(&cwd)
+        .unwrap();
+    Command::cargo_bin("any-switch")
+        .unwrap()
+        .env("ANY_SWITCH_HOME", switch_home.path())
+        .env("CODEX_HOME", codex_home.path())
+        .env("ANY_SWITCH_TEST_HOME", switch_home.path().parent().unwrap())
+        .env("TEST_API_KEY", "sk-test")
+        .args([
+            "add",
+            "codex",
+            "noninteractive",
+            "--kind",
+            "file_template",
+            "--field",
+            "model=gpt-5-codex",
+            "--secret-field",
+            "api_key=@env:TEST_API_KEY",
+        ])
+        .assert()
+        .success();
+
+    Command::cargo_bin("any-switch")
+        .unwrap()
+        .env("ANY_SWITCH_HOME", switch_home.path())
+        .env("CODEX_HOME", codex_home.path())
+        .env("ANY_SWITCH_SKIP_PROCESS_PROBE", "1")
+        .args(["use", "codex-noninteractive"])
+        .assert()
+        .failure()
+        .stderr(contains("use requires confirmation"))
+        .stderr(contains("In a terminal, rerun and type `yes`"))
+        .stderr(contains("rerun with `--yes`"));
+    assert!(!codex_home.path().join("auth.json").exists());
+}
+
+#[test]
 fn show_redacts_secret_fields() {
     let switch_home = tempdir().unwrap();
     Command::cargo_bin("any-switch")
@@ -1981,7 +2071,7 @@ profiles:
 }
 
 #[test]
-fn remove_accepts_force_as_confirmation_alias() {
+fn remove_rejects_force_as_confirmation_alias() {
     let switch_home = tempdir().unwrap();
     Command::cargo_bin("any-switch")
         .unwrap()
@@ -2008,11 +2098,11 @@ fn remove_accepts_force_as_confirmation_alias() {
         .env("ANY_SWITCH_TEST_HOME", switch_home.path().parent().unwrap())
         .args(["remove", "codex-force-remove", "--force"])
         .assert()
-        .success()
-        .stdout(contains("removed codex-force-remove"));
+        .failure()
+        .stderr(contains("unexpected argument '--force'"));
 
     let profiles = fs::read_to_string(switch_home.path().join("profiles.yaml")).unwrap();
-    assert!(!profiles.contains("id: codex-force-remove"));
+    assert!(profiles.contains("id: codex-force-remove"));
 }
 
 #[test]
@@ -2313,6 +2403,7 @@ fn restore_claude_oauth_backup_restores_json_subtrees_not_whole_file() {
         .env("HOME", home.path())
         .env("ANY_SWITCH_TEST_HOME", home.path())
         .env("ANY_SWITCH_HOME", &switch_home)
+        .env("ANY_SWITCH_TEST_PLATFORM", "linux")
         .env("ANY_SWITCH_SKIP_PROCESS_PROBE", "1")
         .args([
             "import-current",
@@ -2339,6 +2430,7 @@ fn restore_claude_oauth_backup_restores_json_subtrees_not_whole_file() {
         .env("HOME", home.path())
         .env("ANY_SWITCH_TEST_HOME", home.path())
         .env("ANY_SWITCH_HOME", &switch_home)
+        .env("ANY_SWITCH_TEST_PLATFORM", "linux")
         .env("ANY_SWITCH_SKIP_PROCESS_PROBE", "1")
         .args(["use", "claude-work", "--yes"])
         .assert()
@@ -2418,6 +2510,7 @@ fn claude_oauth_use_clears_managed_settings_env_keys() {
         .env("HOME", home.path())
         .env("ANY_SWITCH_TEST_HOME", home.path())
         .env("ANY_SWITCH_HOME", &switch_home)
+        .env("ANY_SWITCH_TEST_PLATFORM", "linux")
         .env("ANY_SWITCH_SKIP_PROCESS_PROBE", "1")
         .args([
             "import-current",
@@ -2444,6 +2537,7 @@ fn claude_oauth_use_clears_managed_settings_env_keys() {
         .env("HOME", home.path())
         .env("ANY_SWITCH_TEST_HOME", home.path())
         .env("ANY_SWITCH_HOME", &switch_home)
+        .env("ANY_SWITCH_TEST_PLATFORM", "linux")
         .env("ANY_SWITCH_SKIP_PROCESS_PROBE", "1")
         .args(["use", "claude-work", "--yes"])
         .assert()
@@ -2474,6 +2568,7 @@ fn claude_oauth_use_clears_managed_settings_env_keys() {
         .env("HOME", home.path())
         .env("ANY_SWITCH_TEST_HOME", home.path())
         .env("ANY_SWITCH_HOME", &switch_home)
+        .env("ANY_SWITCH_TEST_PLATFORM", "linux")
         .args(["status", "claude"])
         .assert()
         .success()
@@ -2566,6 +2661,7 @@ fn claude_import_uses_oauth_account_identity_when_credentials_are_opaque() {
         .env("HOME", home.path())
         .env("ANY_SWITCH_TEST_HOME", home.path())
         .env("ANY_SWITCH_HOME", &switch_home)
+        .env("ANY_SWITCH_TEST_PLATFORM", "linux")
         .env("ANY_SWITCH_SKIP_PROCESS_PROBE", "1")
         .args([
             "import-current",
@@ -2660,6 +2756,7 @@ fn claude_import_uses_claude_config_dir_for_file_backed_credentials() {
         .env("HOME", home.path())
         .env("ANY_SWITCH_TEST_HOME", home.path())
         .env("ANY_SWITCH_HOME", &switch_home)
+        .env("ANY_SWITCH_TEST_PLATFORM", "linux")
         .env("CLAUDE_CONFIG_DIR", &config_dir)
         .env("ANY_SWITCH_SKIP_PROCESS_PROBE", "1")
         .args([
@@ -2700,6 +2797,7 @@ fn claude_status_and_writeback_detect_oauth_account_identity_mismatch() {
         .env("HOME", home.path())
         .env("ANY_SWITCH_TEST_HOME", home.path())
         .env("ANY_SWITCH_HOME", &switch_home)
+        .env("ANY_SWITCH_TEST_PLATFORM", "linux")
         .env("ANY_SWITCH_SKIP_PROCESS_PROBE", "1")
         .args([
             "import-current",
@@ -2716,6 +2814,7 @@ fn claude_status_and_writeback_detect_oauth_account_identity_mismatch() {
         .env("HOME", home.path())
         .env("ANY_SWITCH_TEST_HOME", home.path())
         .env("ANY_SWITCH_HOME", &switch_home)
+        .env("ANY_SWITCH_TEST_PLATFORM", "linux")
         .env("ANY_SWITCH_SKIP_PROCESS_PROBE", "1")
         .args(["use", "claude-work", "--yes"])
         .assert()
@@ -2727,6 +2826,7 @@ fn claude_status_and_writeback_detect_oauth_account_identity_mismatch() {
         .env("HOME", home.path())
         .env("ANY_SWITCH_TEST_HOME", home.path())
         .env("ANY_SWITCH_HOME", &switch_home)
+        .env("ANY_SWITCH_TEST_PLATFORM", "linux")
         .args(["status", "claude"])
         .assert()
         .success()
@@ -2737,6 +2837,7 @@ fn claude_status_and_writeback_detect_oauth_account_identity_mismatch() {
         .env("HOME", home.path())
         .env("ANY_SWITCH_TEST_HOME", home.path())
         .env("ANY_SWITCH_HOME", &switch_home)
+        .env("ANY_SWITCH_TEST_PLATFORM", "linux")
         .env("ANY_SWITCH_SKIP_PROCESS_PROBE", "1")
         .args(["doctor", "claude"])
         .assert()
@@ -2750,6 +2851,7 @@ fn claude_status_and_writeback_detect_oauth_account_identity_mismatch() {
         .env("HOME", home.path())
         .env("ANY_SWITCH_TEST_HOME", home.path())
         .env("ANY_SWITCH_HOME", &switch_home)
+        .env("ANY_SWITCH_TEST_PLATFORM", "linux")
         .env("PROXY_TOKEN", "proxy-secret")
         .args([
             "add",
@@ -2770,6 +2872,7 @@ fn claude_status_and_writeback_detect_oauth_account_identity_mismatch() {
         .env("HOME", home.path())
         .env("ANY_SWITCH_TEST_HOME", home.path())
         .env("ANY_SWITCH_HOME", &switch_home)
+        .env("ANY_SWITCH_TEST_PLATFORM", "linux")
         .env("ANY_SWITCH_SKIP_PROCESS_PROBE", "1")
         .args(["use", "claude-proxy", "--yes", "--accept-resolved-change"])
         .assert()
@@ -3393,6 +3496,17 @@ fn process_probe_blocks_static_write_unless_allow_running() {
         .unwrap()
         .env("ANY_SWITCH_HOME", switch_home.path())
         .env("CODEX_HOME", codex_home.path())
+        .args(["use", "codex-running", "--yes", "--assume-app-stopped"])
+        .assert()
+        .failure()
+        .stderr(contains("InvalidSafetyFlag"))
+        .stderr(contains("--assume-app-stopped only applies to OAuth"))
+        .stderr(contains("retry with `--allow-running`"));
+
+    Command::cargo_bin("any-switch")
+        .unwrap()
+        .env("ANY_SWITCH_HOME", switch_home.path())
+        .env("CODEX_HOME", codex_home.path())
         .env(
             "ANY_SWITCH_PROCESS_PROBE_FIXTURE",
             "4242\tSun May 24 20:00:00 2026\t/usr/local/bin/codex",
@@ -3412,13 +3526,28 @@ fn process_probe_blocks_static_write_unless_allow_running() {
             "ANY_SWITCH_PROCESS_PROBE_FIXTURE",
             "4242\tSun May 24 20:00:00 2026\t/usr/local/bin/codex",
         )
+        .args(["use", "codex-running", "--yes", "--assume-app-stopped"])
+        .assert()
+        .failure()
+        .stderr(contains("InvalidSafetyFlag"))
+        .stderr(contains("--assume-app-stopped only applies to OAuth"))
+        .stderr(contains("retry with `--allow-running`"));
+
+    Command::cargo_bin("any-switch")
+        .unwrap()
+        .env("ANY_SWITCH_HOME", switch_home.path())
+        .env("CODEX_HOME", codex_home.path())
+        .env(
+            "ANY_SWITCH_PROCESS_PROBE_FIXTURE",
+            "4242\tSun May 24 20:00:00 2026\t/usr/local/bin/codex",
+        )
         .args(["use", "codex-running", "--yes", "--allow-running"])
         .assert()
         .success();
 }
 
 #[test]
-fn oauth_assume_app_stopped_requires_yes_and_can_escape_probe() {
+fn oauth_assume_app_stopped_requires_confirmation_and_can_escape_probe() {
     let cwd = std::env::current_dir().unwrap();
     let switch_home = tempfile::Builder::new()
         .prefix(".test-switch-")
@@ -3429,6 +3558,25 @@ fn oauth_assume_app_stopped_requires_yes_and_can_escape_probe() {
         .tempdir_in(&cwd)
         .unwrap();
     write_codex_oauth(codex_home.path(), "acct-a", "refresh-a");
+
+    Command::cargo_bin("any-switch")
+        .unwrap()
+        .env("ANY_SWITCH_HOME", switch_home.path())
+        .env("CODEX_HOME", codex_home.path())
+        .env("ANY_SWITCH_PROCESS_PROBE_FIXTURE", "")
+        .args([
+            "import-current",
+            "--yes",
+            "codex",
+            "a",
+            "--kind",
+            "oauth_capture",
+        ])
+        .assert()
+        .failure()
+        .stderr(contains(
+            "import-current --yes is only valid with --assume-app-stopped",
+        ));
 
     Command::cargo_bin("any-switch")
         .unwrap()
@@ -3448,7 +3596,29 @@ fn oauth_assume_app_stopped_requires_yes_and_can_escape_probe() {
         ])
         .assert()
         .failure()
-        .stderr(contains("--assume-app-stopped requires --yes"));
+        .stderr(contains("requires confirmation"))
+        .stderr(contains("In a terminal, rerun and type `yes`"))
+        .stderr(contains("rerun with `--yes`"));
+
+    Command::cargo_bin("any-switch")
+        .unwrap()
+        .env("ANY_SWITCH_HOME", switch_home.path())
+        .env("CODEX_HOME", codex_home.path())
+        .env("ANY_SWITCH_PROCESS_PROBE_FIXTURE", "")
+        .args([
+            "import-current",
+            "--yes",
+            "codex",
+            "a",
+            "--kind",
+            "oauth_capture",
+            "--assume-app-stopped",
+        ])
+        .assert()
+        .failure()
+        .stderr(contains("InvalidSafetyFlag"))
+        .stderr(contains("no running app process was detected"))
+        .stderr(contains("Retry without `--assume-app-stopped`"));
 
     Command::cargo_bin("any-switch")
         .unwrap()
@@ -3460,12 +3630,12 @@ fn oauth_assume_app_stopped_requires_yes_and_can_escape_probe() {
         )
         .args([
             "import-current",
+            "--yes",
             "codex",
             "a",
             "--kind",
             "oauth_capture",
             "--assume-app-stopped",
-            "--yes",
         ])
         .assert()
         .success()

@@ -134,12 +134,64 @@ fn unlock_file(file: &File) -> Result<()> {
     }
 }
 
-#[cfg(not(unix))]
-fn lock_file(_file: &File, _path: &Path) -> Result<()> {
-    Ok(())
+#[cfg(windows)]
+fn lock_file(file: &File, path: &Path) -> Result<()> {
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::Foundation::ERROR_LOCK_VIOLATION;
+    use windows_sys::Win32::Storage::FileSystem::{
+        LockFileEx, LOCKFILE_EXCLUSIVE_LOCK, LOCKFILE_FAIL_IMMEDIATELY,
+    };
+    use windows_sys::Win32::System::IO::OVERLAPPED;
+
+    let mut overlapped = OVERLAPPED::default();
+    let ok = unsafe {
+        LockFileEx(
+            file.as_raw_handle(),
+            LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY,
+            0,
+            u32::MAX,
+            u32::MAX,
+            &mut overlapped,
+        )
+    };
+    if ok != 0 {
+        return Ok(());
+    }
+    let err = std::io::Error::last_os_error();
+    if err.raw_os_error() == Some(ERROR_LOCK_VIOLATION as i32) {
+        Err(anyhow!("LockBusy: {}", path.display()))
+    } else {
+        Err(anyhow!("failed to lock {}: {err}", path.display()))
+    }
 }
 
-#[cfg(not(unix))]
+#[cfg(windows)]
+fn unlock_file(file: &File) -> Result<()> {
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::Storage::FileSystem::UnlockFileEx;
+    use windows_sys::Win32::System::IO::OVERLAPPED;
+
+    let mut overlapped = OVERLAPPED::default();
+    let ok = unsafe { UnlockFileEx(file.as_raw_handle(), 0, u32::MAX, u32::MAX, &mut overlapped) };
+    if ok != 0 {
+        Ok(())
+    } else {
+        Err(anyhow!(
+            "failed to unlock file: {}",
+            std::io::Error::last_os_error()
+        ))
+    }
+}
+
+#[cfg(not(any(unix, windows)))]
+fn lock_file(_file: &File, path: &Path) -> Result<()> {
+    Err(anyhow!(
+        "UnsupportedPlatform: file locks are not implemented for {}",
+        path.display()
+    ))
+}
+
+#[cfg(not(any(unix, windows)))]
 fn unlock_file(_file: &File) -> Result<()> {
     Ok(())
 }

@@ -1,165 +1,313 @@
 # any-switch
 
-`any-switch` is a local app profile/state switcher. It is not limited to AI CLI
-tools: app definitions describe targets, and trusted core handlers apply
-structured profile records to local files, structured JSON/TOML subtrees, and
-secret stores.
+`any-switch` switches local app profiles and state.
 
-The current MVP ships built-in definitions for Claude Code and OpenAI Codex
-because their credential and state switching flows exercise the hardest parts of
-the core model first.
+Use it when one app has several local setups and you want to move between them
+without hand-editing files, copying tokens, or remembering which config entries
+belong together.
 
-The design document is in [docs/design.md](docs/design.md). Current acceptance
-evidence is tracked in [docs/acceptance.md](docs/acceptance.md), with real-app
-checks in [docs/manual-verification.md](docs/manual-verification.md).
+Examples:
 
-## Current Implementation Status
+- switch Claude Code between a personal account and a work account;
+- switch Codex between ChatGPT OAuth and an API-key provider;
+- switch any supported local tool between different endpoints, models, accounts,
+  workspaces, or other file-backed state.
 
-This repository now contains a Rust CLI foundation with:
+The first built-in apps are Claude Code and OpenAI Codex. The tool itself is not
+AI-specific: app definitions describe what local state can be captured and
+restored, and `any-switch` handles the backup, redaction, drift checks, and
+write safety around that state.
 
-- built-in Claude and Codex app definitions embedded in the binary;
-- `apps`, `add`, `edit`, `list`, `show`, `use --dry-run`, `use`, `status`,
-  `backup list`, `restore-target`, `remove`, `detach`, `doctor`, and
-  `config path` command surfaces;
-- user app definitions loaded from `apps.d/*.yaml`, with path boundary checks;
-- safe override support for app definitions, currently limited to appending
-  process probe names and overriding field defaults / sensitivity flags;
-- static profile support for Claude `env_injection`, Codex `file_template`,
-  and user-defined `file_template` targets rendered from Definition templates;
-- `import-current` for Claude env profiles, Claude file-backed OAuth captures,
-  Codex API-key profiles, Codex file-backed ChatGPT OAuth captures, and
-  user-defined OAuth captures that use trusted file, JSON subtree, or managed
-  TOML handlers;
-- `secret_entry` capture sources backed by macOS Keychain generic passwords,
-  using Security.framework with a fixture backend for tests; Claude OAuth import
-  prefers the `Claude Code-credentials` Keychain entry when available;
-- file-backed `oauth_capture` replay, identity verification, and writeback for
-  Codex, Claude, and Definition-driven JSON/file/TOML sources;
-- OAuth required identity mismatches fail the switch; optional identity
-  mismatches are recorded as history warnings without blocking;
-- defensive backups for managed file, JSON subtree, TOML managed-path, and
-  Keychain targets;
-- backup manifests preserve whether a target requires the app to be stopped;
-  `restore-target` enforces the same OAuth process-safety rule and ignores
-  `--allow-running` for those backups;
-- `restore-target` validates backup manifests before writing: schema/app match,
-  stored blob names, resolved target path boundaries, target type, and blob
-  sha256 must all pass;
-- OAuth profiles are checked for current-platform capture completeness before
-  `use` writes back, creates a backup, or opens a pending-switch journal;
-- backup creation hardlinks duplicate blobs when the filesystem and permissions
-  allow it; `doctor` reports backup count, deduplicated inode bytes, and logical
-  bytes per app;
-- pending-switch journal creation, cleanup, interrupted-state reporting,
-  bookkeeping-stage recovery, backup-backed rollback, and restore-target
-  bookkeeping recovery before the next same-app write command;
-- process-name probing for target apps; static writes can opt into
-  `--allow-running`, while OAuth I/O still refuses when a target process is
-  detected unless `--assume-app-stopped --yes` is explicitly supplied;
-  `AppRunning` diagnostics include PID, process start time, and command line;
-  successful `--assume-app-stopped --yes` escape hatches are recorded in
-  history warnings for audit;
-- POSIX advisory locks for profile writes, app writes, shared state writes, and
-  target files; `import-current` also locks the live sources it reads before
-  capturing profile data;
-- active profile resolved-target snapshots, with `status` drift reporting when
-  a Definition-declared path environment changes and `use --accept-resolved-change`
-  to explicitly accept the new target locations;
-- target path checks follow existing symlink parents and reject paths that
-  resolve outside the current user's home;
-- `status` reports `matched-with-overrides` when managed targets match but
-  Definition-declared higher-priority authentication sources may override them;
-- `edit` opens profile YAML fragments under `state/edit` using `$VISUAL` or
-  `$EDITOR`, validates immutable fields and schema, and removes the fragment
-  after use;
-- `doctor` reports the required profiles.yaml secret-leak surface check and
-  warns when files or directories under `ANY_SWITCH_HOME` have widened Unix
-  permissions;
-- `doctor <app>` also reports process probe matches, active profile metadata,
-  identity, OAuth capture completeness, and resolved managed target paths
-  without secret values, and supports `--json` for scriptable diagnostics;
-- app definitions can add `doctor.json_fields` diagnostics such as auth mode or
-  stale timestamp warnings, plus `doctor.json_object_schemas` warnings for
-  upgraded app JSON state, without hardcoding built-in app names;
-- release archives are produced by `scripts/package-release.sh` and include
-  read-only copies of the built-in Claude and Codex App Definitions for audit;
-  runtime still uses the definitions embedded in the binary;
-- `scripts/manual-evidence.sh` initializes a redacted, read-only manual
-  verification evidence file for release-candidate real-app checks;
-- secret argv rejection and sanitized output;
-- basic state tracking under `~/.any-switch` or `ANY_SWITCH_HOME`;
-- CI and release workflows for Linux x86_64, macOS x86_64, and macOS arm64
-  binaries.
+## What It Does
 
-Remaining unproven items require real Claude/Codex application runs on macOS
-and Linux; those checks are tracked in `docs/manual-verification.md`.
+`any-switch` keeps named profiles on your machine. A profile is the local state
+you want an app to use, such as:
 
-## Install From Source
+- account identity and OAuth credential state;
+- API keys and provider settings;
+- model, endpoint, and environment settings;
+- JSON, TOML, file, Keychain, or environment fragments declared by an app
+  definition.
+
+When you switch profiles, `any-switch` shows the plan, creates backups, writes
+only the declared targets, and avoids printing secret values.
+
+## Install
+
+Download a release archive for your platform from GitHub Releases, then put the
+`any-switch` binary somewhere on your `PATH`.
+
+Current release archives are built for Linux x86_64, macOS Intel, macOS Apple
+Silicon, and Windows x86_64.
+
+The current release scope is a macOS-evidenced stage release: macOS Claude
+OAuth import has real local evidence, while broader restart checks plus Linux
+and Windows real-app evidence are tracked as follow-up work. The Linux and
+Windows archives are still built and packaged by CI, but this release does not
+claim full `docs/design.md` section 13 coverage.
+
+Release archives are published with `.sha256` checksum files:
+
+```bash
+if command -v shasum >/dev/null 2>&1; then
+  shasum -a 256 -c any-switch-<tag>-<target>.tar.gz.sha256
+else
+  sha256sum -c any-switch-<tag>-<target>.tar.gz.sha256
+fi
+tar -xzf any-switch-<tag>-<target>.tar.gz
+./any-switch-<tag>-<target>/any-switch --version
+```
+
+On Windows, verify the hash in PowerShell, then run `any-switch.exe` from the
+extracted archive:
+
+```powershell
+$archive = ".\any-switch-<tag>-x86_64-pc-windows-msvc.tar.gz"
+$expected = ((Get-Content "${archive}.sha256") -split "\s+")[0].ToLowerInvariant()
+$actual = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+if ($actual -ne $expected) { throw "checksum mismatch" }
+tar -xzf .\any-switch-<tag>-x86_64-pc-windows-msvc.tar.gz
+.\any-switch-<tag>-x86_64-pc-windows-msvc\any-switch.exe --version
+```
+
+You can also build from source. The repository pins Rust `1.95.0` in
+`rust-toolchain.toml`, and Cargo metadata declares `rust-version = "1.95"`:
 
 ```bash
 cargo install --path .
 ```
 
+Check the installation:
+
+```bash
+any-switch --version
+any-switch doctor
+```
+
 ## Quick Start
 
-Use a test home first:
+See the apps that this build knows about:
 
 ```bash
-export ANY_SWITCH_HOME="$HOME/.any-switch-dev"
-
 any-switch apps
-any-switch config path
-
-printf '%s' "$ANTHROPIC_AUTH_TOKEN" | any-switch add claude glm \
-  --kind env_injection \
-  --field base_url=https://open.bigmodel.cn/api/anthropic \
-  --field models.default=glm-4.6 \
-  --secret-field auth_token=@stdin
-
-any-switch use claude-glm --dry-run
-any-switch use claude-glm --yes
-any-switch status claude
 ```
 
-Codex API-key profile:
+Capture the current login or state of an app as a profile:
 
 ```bash
-printf '%s' "$OPENAI_API_KEY" | any-switch add codex openai \
-  --kind file_template \
-  --field model=gpt-5-codex \
-  --field model_provider=openai \
-  --secret-field api_key=@stdin
+any-switch import-current <app> personal
 ```
+
+List saved profiles:
+
+```bash
+any-switch list
+```
+
+Switch to a profile:
+
+```bash
+any-switch use <profile-id> --dry-run
+any-switch use <profile-id>
+```
+
+Check what is active:
+
+```bash
+any-switch status <app>
+any-switch doctor <app>
+```
+
+Built-in examples:
+
+```bash
+any-switch import-current codex personal
+any-switch import-current claude work --kind oauth_capture
+any-switch use codex-personal
+```
+
+## Common Workflows
+
+### Save the Current App State
+
+Use `import-current` after you have already logged in or configured the target
+app in the normal way:
+
+```bash
+any-switch import-current <app> personal
+```
+
+This is the right flow for OAuth-based app state, because the app owns the real
+login process. `any-switch` captures the local state after login; it does not log
+in for you. For built-in apps this may look like
+`any-switch import-current codex personal` or
+`any-switch import-current claude work --kind oauth_capture`.
+
+### Add a Static Profile
+
+Use `add` when the profile can be described with fields such as an API key,
+model, provider, or base URL. Field names are defined by the selected app
+definition and profile kind:
+
+```bash
+any-switch add <app> work --kind <kind> --field key=value
+```
+
+Built-in Codex example:
+
+```bash
+any-switch add codex openai --kind file_template \
+  --secret-field api_key=@prompt \
+  --field model=gpt-5-codex \
+  --field model_provider=openai
+```
+
+Secret fields can be read from a masked interactive prompt, stdin, an
+environment variable, or a local file:
+
+```bash
+--secret-field api_key=@prompt
+--secret-field api_key=@stdin
+--secret-field api_key=@env:OPENAI_API_KEY
+--secret-field api_key=@file:~/secrets/openai-api-key
+```
+
+Use `@prompt` for normal interactive setup. Use `@env:NAME`, `@stdin`, or
+`@file:PATH` when scripting.
+
+### Preview Before Writing
+
+Use `--dry-run` to inspect a switch without changing local files:
+
+```bash
+any-switch use <profile-id> --dry-run
+```
+
+### Recover a Target From Backup
+
+Backups are created before managed targets are overwritten. Inspect them with:
+
+```bash
+any-switch backup list
+```
+
+Restore an app from a specific backup when needed:
+
+```bash
+any-switch restore-target <app> <backup-id>
+```
+
+`restore-target` restores live app state from the backup. It does not mark a
+profile active, so run `any-switch status <app>` afterwards to inspect the
+result. Confirm the restore by typing `yes` in an interactive terminal, or add
+`--yes` in scripts and CI.
 
 ## Safety Notes
 
-- Static secrets for `env_injection` and `file_template` are stored in
-  `profiles.yaml` with file mode `0600`; existing target files with wider
-  permissions are tightened on write, while stricter owner-only permissions are
-  preserved.
-- Do not commit `~/.any-switch/profiles.yaml`.
-- Commands redact sensitive fields in human and JSON output.
-- Quit target apps before any write operation when practical. OAuth capture
-  reads and writes require the target app to be stopped; `--allow-running` is
-  intentionally ignored for those operations, with only the audited
-  `--assume-app-stopped --yes` escape hatch for process-probe false positives.
-  Static `env_injection` and `file_template` writes can use `--allow-running`,
-  but stopping the app first is still recommended because the app may rewrite
-  the same config files.
+- Profiles are stored under `~/.any-switch` by default. This directory can
+  contain static secrets, OAuth captures, and defensive backups. Keep it out of
+  cloud-synced folders such as iCloud Drive, Dropbox, OneDrive, and Google
+  Drive; `doctor` warns when it detects a known sync root. Set `ANY_SWITCH_HOME`
+  to an absolute path under your home directory if you want a separate state
+  directory.
+- Secret values are redacted from normal command output and JSON output.
+- Do not commit `~/.any-switch` or any generated profile/capture files.
+- Quit the target app before OAuth or process-sensitive operations. OAuth
+  credentials can rotate while the app is running, so `--allow-running` does not
+  apply to those operations.
+- Use `--assume-app-stopped` only when the app is actually stopped but process
+  detection reports a false positive; confirm with `--yes` in scripts or by
+  typing `yes` in an interactive terminal. Do not pass it preemptively: if no
+  matching process was detected, any-switch rejects the flag and asks you to
+  retry without it.
+- For static file or environment profiles, `--allow-running` is available,
+  but stopping the app first is still safer because the app may rewrite its own
+  config files.
+- `--yes` confirms high-risk actions non-interactively, such as `use`,
+  `restore-target`, `remove`, or `--assume-app-stopped`. In an interactive
+  terminal you may omit `--yes` and type `yes` at the prompt instead. Neither
+  confirmation path disables identity checks, backup checks, path checks, locks,
+  schema validation, or secret redaction. `add` and ordinary `import-current`
+  do not accept `--yes` because they create or capture state instead of
+  overwriting the target app. `import-current --yes` is valid only with
+  `--assume-app-stopped`.
+
+## Troubleshooting
+
+Start with:
+
+```bash
+any-switch doctor
+any-switch doctor <app>
+any-switch status <app>
+```
+
+Useful next steps:
+
+- `IdentityMissing`: the app does not currently expose the identity fields that
+  the profile kind requires. Make sure the app is logged in, then run
+  `doctor <app>` again.
+- `TargetMissing`: run `doctor <app>` and look for `definition_capture_source`
+  rows. They show whether the current platform credential source, such as a
+  Keychain entry or credentials file, is `exists`, `missing`, or `warning`
+  because existence could not be confirmed. If a warning row includes `hint:`,
+  follow that source-specific next step first. For macOS Keychain checks, avoid
+  `security find-generic-password -w` unless you intentionally need to reveal
+  the credential.
+- `DriftBeforeWriteback`: the live app state no longer matches the active
+  profile. Run `status <app>` to inspect it. If the live state is valuable,
+  import it as a new profile before switching away.
+- `AppRunning`: quit the target app and retry. Use `--assume-app-stopped` only
+  for a process-detection false positive, then confirm with `--yes` or the
+  interactive prompt.
+- `ImportAmbiguous`: pass `--kind <kind>` or clean up the app's current auth
+  files so only one import rule matches.
+
+## Custom Apps
+
+`any-switch` can be extended with app definitions under `apps.d/*.yaml`.
+Definitions declare the local targets an app uses and which trusted handlers can
+capture or write them. This lets new apps reuse the same safety model without
+adding app-specific branches to the core CLI.
+
+For the full model, see [docs/design.md](docs/design.md).
+
+To inspect or customize app definitions:
+
+```bash
+any-switch apps show <app>
+any-switch apps export <app> --source system
+any-switch apps export <app> --source resolved
+any-switch apps export <app> --as override --output ~/.any-switch/overrides.d/<app>.yaml
+any-switch apps validate ~/.any-switch/overrides.d/<app>.yaml
+```
+
+## More Docs
+
+- [docs/user-guide.md](docs/user-guide.md): practical user guide with common
+  workflows, safety flags, and troubleshooting.
+- [docs/design.md](docs/design.md): architecture and safety model.
+- [docs/manual-verification.md](docs/manual-verification.md): real-app checks
+  that cannot be fully proven in CI.
+- [docs/acceptance.md](docs/acceptance.md): acceptance coverage.
+- [docs/evidence-followups.md](docs/evidence-followups.md): deferred manual
+  evidence tracking before full section 13 coverage is claimed.
+- [docs/release.md](docs/release.md): release packaging and signing.
+- [CHANGELOG.md](CHANGELOG.md): user-facing release notes.
+- [CONTRIBUTING.md](CONTRIBUTING.md): development and contribution rules.
+- [.github/ISSUE_TEMPLATE/release_checklist.yml](.github/ISSUE_TEMPLATE/release_checklist.yml):
+  release evidence checklist for maintainers.
+- [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md): community standards.
+- [SECURITY.md](SECURITY.md): vulnerability reporting.
 
 ## Development
+
+Run the local verification script before opening a pull request:
 
 ```bash
 scripts/verify-local.sh
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines,
-[SECURITY.md](SECURITY.md) for vulnerability reporting, and
-[docs/release.md](docs/release.md) for the binary release workflow.
-
 ## License
 
-Licensed under either of:
-
-- Apache License, Version 2.0
-- MIT license
+MIT. See [LICENSE](LICENSE).

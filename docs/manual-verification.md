@@ -1,11 +1,21 @@
 # Manual Verification
 
 These checks collect the real app and OS evidence that cannot be proven by the
-repository test harness. Run them before declaring the MVP complete or cutting a
-release candidate that claims full `docs/design.md` section 13 coverage.
+repository test harness. For the current stage, the macOS Claude OAuth import
+evidence is sufficient to cut a release candidate as long as the release notes
+do not claim full `docs/design.md` section 13 coverage. Broader macOS restart
+and risk experiments, plus Linux and Windows real-app evidence, are deferred to
+follow-up release work.
 
 Record results in `docs/manual-evidence-template.md` or an issue / release note
 that preserves the same fields. Redact secret values and capture blob contents.
+Keep the "Evidence Summary" table current while you work: mark each item
+passed, failed, skipped with reason, or linked to a follow-up issue. Use
+`docs/evidence-followups.md` as the durable tracker for deferred items until
+they move to a repository issue or release checklist. The current stage may
+release when the current-stage macOS Claude OAuth import blocker is passed and
+deferred follow-up evidence has tracking. Do not claim full section 13 coverage
+while any deferred item is still pending.
 
 Use a dedicated test account and a temporary any-switch home:
 
@@ -26,10 +36,11 @@ ANY_SWITCH_BIN=target/release/any-switch \
 
 The generated file does not perform imports, switches, restores, or any other
 write operation. It captures environment and `doctor` / `status` output as a
-starting point, with email addresses and UUID-like identifiers redacted; the
-script refuses to overwrite an existing evidence file. If `ANY_SWITCH_HOME` is
-not set, the script uses a temporary any-switch home under the current user's home
-directory and removes it on exit, so it does not initialize `~/.any-switch`.
+starting point, with email addresses, UUID-like identifiers, and common JSON
+identity names, and Keychain account labels redacted; the script refuses to
+overwrite an existing evidence file. If `ANY_SWITCH_HOME` is not set, the script
+uses a temporary any-switch home under the current user's home directory and
+removes it on exit, so it does not initialize `~/.any-switch`.
 Set `ANY_SWITCH_HOME` explicitly when you want the diagnostics to inspect an
 existing any-switch state directory. The real app experiments below still
 require manual execution and review.
@@ -41,7 +52,9 @@ publish a redacted record.
 
 ## Claude OAuth Import On macOS
 
-Purpose: covers acceptance item 2 and preflight items A, B, and C.
+Purpose: the current-stage release blocker covers acceptance item 2. The
+refresh-token rotation, source-mismatch, and runtime JSON sampling experiments
+below cover deferred full section 13 evidence items A, B, and C.
 
 Prerequisites:
 
@@ -49,7 +62,7 @@ Prerequisites:
 - Claude Code is logged in with OAuth.
 - Claude Code is fully quit before each `any-switch` OAuth command.
 
-Steps:
+Current-stage blocker steps:
 
 1. Confirm Claude Code is not running:
 
@@ -70,12 +83,14 @@ Steps:
    Passing evidence: profile kind is `oauth_capture`, required identity fields
    are present, and `status` is `matched`.
 
+Deferred full-coverage experiments:
+
 3. Refresh-token rotation experiment:
 
    - Save hashes of `captures/claude-manual-macos/*` and `manifest.json`.
    - Start Claude Code and use it long enough to trigger token refresh.
    - Quit Claude Code.
-   - Run `any-switch use claude-manual-macos --yes`.
+   - Run `any-switch use claude-manual-macos` and confirm by typing `yes`.
    - Compare capture hashes and `manifest.json`.
 
    Passing evidence: writeback either records new bytes safely or proves the
@@ -137,8 +152,8 @@ blobs exist, and `status` is `matched`.
 
 Purpose: covers acceptance item 5.
 
-Run once on macOS and once on Linux for each supported app available on that
-platform.
+Run once on macOS, Linux, and Windows for each supported app/profile kind
+available on that platform.
 
 Steps:
 
@@ -147,17 +162,66 @@ Steps:
 3. Switch to profile A:
 
    ```bash
-   any-switch use <profile-a> --yes
+   any-switch use <profile-a>
    any-switch status <app>
    ```
 
-4. Start the app and verify the visible account/provider/model matches profile
-   A.
+4. Confirm the switch by typing `yes`, then start the app and verify the visible
+   account/provider/model matches profile A.
 5. Quit the app.
 6. Switch to profile B and repeat the verification.
 
 Passing evidence: app-visible state matches the selected profile after restart
 for both directions.
+
+## Windows Release Smoke Test
+
+Purpose: verifies the Windows release archive shape and basic executable
+behavior. This does not imply support for Windows Credential Manager or every
+OAuth backend; the bundled Claude OAuth file source is Linux-scoped until
+Windows Claude credentials behavior is confirmed separately.
+
+Prerequisites:
+
+- Windows x86_64 machine or runner.
+- Downloaded `any-switch-<tag>-x86_64-pc-windows-msvc.tar.gz` and matching
+  `.sha256` file from the GitHub Release.
+
+Steps:
+
+1. Verify the checksum:
+
+   ```powershell
+   $archive = ".\any-switch-<tag>-x86_64-pc-windows-msvc.tar.gz"
+   $expected = ((Get-Content "${archive}.sha256") -split "\s+")[0].ToLowerInvariant()
+   $actual = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+   if ($actual -ne $expected) { throw "checksum mismatch" }
+   ```
+
+2. Extract the archive:
+
+   ```powershell
+   tar -xzf .\any-switch-<tag>-x86_64-pc-windows-msvc.tar.gz
+   ```
+
+3. Run:
+
+   ```powershell
+   .\any-switch-<tag>-x86_64-pc-windows-msvc\any-switch.exe --version
+   .\any-switch-<tag>-x86_64-pc-windows-msvc\any-switch.exe apps
+   .\any-switch-<tag>-x86_64-pc-windows-msvc\any-switch.exe doctor
+   ```
+
+4. Optional: initialize a redacted evidence file from the extracted archive:
+
+   ```powershell
+   powershell -NoProfile -ExecutionPolicy Bypass -File `
+     .\any-switch-<tag>-x86_64-pc-windows-msvc\scripts\manual-evidence.ps1 `
+     manual-evidence-<tag>-windows.md
+   ```
+
+Passing evidence: commands exit successfully, output is redacted, and `doctor`
+does not report a packaging or startup failure.
 
 ## Codex External Restore Flow
 

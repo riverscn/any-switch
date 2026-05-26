@@ -37,9 +37,10 @@ fn main() {
             .unwrap_or_else(|| panic!("invalid builtin definition path {}", path.display()));
         generated.push_str("    BuiltinDefinitionAsset {\n");
         generated.push_str(&format!("        name: {name:?},\n"));
+        let relative = path.strip_prefix(&manifest_dir).unwrap_or(&path);
         generated.push_str(&format!(
-            "        text: include_str!({:?}),\n",
-            path.display().to_string()
+            "        text: include_str!(concat!(env!(\"CARGO_MANIFEST_DIR\"), \"/\", {:?})),\n",
+            relative.display().to_string()
         ));
         generated.push_str("    },\n");
     }

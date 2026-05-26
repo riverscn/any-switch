@@ -32,8 +32,6 @@ impl Default for ProfileStore {
 pub struct Preferences {
     #[serde(default = "default_keep_backups")]
     pub keep_backups: usize,
-    #[serde(default = "default_confirm")]
-    pub confirm_before_switch: bool,
     #[serde(default = "default_stale_days")]
     pub oauth_stale_warn_days: u64,
     #[serde(default)]
@@ -44,7 +42,6 @@ impl Default for Preferences {
     fn default() -> Self {
         Self {
             keep_backups: default_keep_backups(),
-            confirm_before_switch: default_confirm(),
             oauth_stale_warn_days: default_stale_days(),
             default_app: None,
         }
@@ -53,9 +50,6 @@ impl Default for Preferences {
 
 fn default_keep_backups() -> usize {
     20
-}
-fn default_confirm() -> bool {
-    true
 }
 fn default_stale_days() -> u64 {
     30

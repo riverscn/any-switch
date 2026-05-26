@@ -6,22 +6,43 @@ on:
       - "v*"
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   verify:
     name: verify
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - run: rustup toolchain install 1.95.0 --profile minimal --component rustfmt --component clippy
-      - uses: Swatinem/rust-cache@v2
+      - name: Verify tag matches Cargo version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(cargo pkgid | sed -n 's/.*[#@]//p')"
+          if [[ -z "${version}" ]]; then
+            echo "could not read package version from cargo pkgid" >&2
+            exit 1
+          fi
+          if [[ "${GITHUB_REF_NAME}" != "v${version}" ]]; then
+            echo "tag ${GITHUB_REF_NAME} does not match Cargo.toml version v${version}" >&2
+            exit 1
+          fi
       - run: scripts/verify-local.sh
 
   build:
     name: build ${{ matrix.target }}
     needs: verify
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+      artifact-metadata: write
     strategy:
       matrix:
         include:
@@ -31,10 +52,31 @@ jobs:
             target: x86_64-apple-darwin
           - os: macos-15
             target: aarch64-apple-darwin
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
     steps:
-      - uses: actions/checkout@v4
-      - run: rustup toolchain install 1.95.0 --profile minimal --target ${{ matrix.target }}
-      - uses: Swatinem/rust-cache@v2
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install 1.95.0 --profile minimal --component clippy --target ${{ matrix.target }}
+      - name: Verify Windows release target
+        if: matrix.target == 'x86_64-pc-windows-msvc'
+        run: cargo clippy --locked --target x86_64-pc-windows-msvc --all-targets -- -D warnings
+      - name: Verify Windows file locking
+        if: matrix.target == 'x86_64-pc-windows-msvc'
+        run: cargo test --locked --target x86_64-pc-windows-msvc lock::tests::second_lock_is_busy
+      - name: Verify Windows username detection
+        if: matrix.target == 'x86_64-pc-windows-msvc'
+        run: cargo test --locked --target x86_64-pc-windows-msvc paths::tests::current_os_user_prefers_username_on_windows
+      - name: Verify Windows process probes
+        if: matrix.target == 'x86_64-pc-windows-msvc'
+        run: cargo test --locked --target x86_64-pc-windows-msvc process::tests::matches_windows_exe_names_case_insensitively
+      - name: Verify Windows process CSV parser
+        if: matrix.target == 'x86_64-pc-windows-msvc'
+        run: cargo test --locked --target x86_64-pc-windows-msvc process::tests::parses_quoted_csv_fields
+      - name: Verify Windows evidence helper
+        if: matrix.target == 'x86_64-pc-windows-msvc'
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/manual-evidence.ps1 -Help
       - run: cargo build --locked --release --target ${{ matrix.target }}
       - name: Sign macOS binary
         shell: bash
@@ -45,12 +87,66 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: bash scripts/sign-macos-binary.sh "${{ matrix.target }}" "target/${{ matrix.target }}/release/any-switch"
+        run: |
+          binary="target/${{ matrix.target }}/release/any-switch"
+          if [[ "${{ matrix.target }}" == *-windows-* ]]; then
+            binary="${binary}.exe"
+          fi
+          bash scripts/sign-macos-binary.sh "${{ matrix.target }}" "${binary}"
       - name: Package
         shell: bash
         run: bash scripts/package-release.sh "${{ github.ref_name }}" "${{ matrix.target }}"
-      - uses: softprops/action-gh-release@v2
+      - name: Upload release archive
+        uses: actions/upload-artifact@v7
         with:
-          files: |
+          name: any-switch-${{ github.ref_name }}-${{ matrix.target }}
+          path: |
             any-switch-${{ github.ref_name }}-${{ matrix.target }}.tar.gz
             any-switch-${{ github.ref_name }}-${{ matrix.target }}.tar.gz.sha256
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: publish release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      artifact-metadata: read
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: any-switch-${{ github.ref_name }}-*
+          path: release-artifacts
+          merge-multiple: true
+      - name: Verify release artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          for target in \
+            x86_64-unknown-linux-gnu \
+            x86_64-apple-darwin \
+            aarch64-apple-darwin \
+            x86_64-pc-windows-msvc; do
+            test -f "release-artifacts/any-switch-${GITHUB_REF_NAME}-${target}.tar.gz"
+            test -f "release-artifacts/any-switch-${GITHUB_REF_NAME}-${target}.tar.gz.sha256"
+            (
+              cd release-artifacts
+              if command -v shasum >/dev/null 2>&1; then
+                shasum -a 256 -c "any-switch-${GITHUB_REF_NAME}-${target}.tar.gz.sha256"
+              else
+                sha256sum -c "any-switch-${GITHUB_REF_NAME}-${target}.tar.gz.sha256"
+              fi
+            )
+          done
+      - uses: softprops/action-gh-release@v3
+        with:
+          fail_on_unmatched_files: true
+          body_path: CHANGELOG.md
+          files: |
+            release-artifacts/*.tar.gz
+            release-artifacts/*.tar.gz.sha256

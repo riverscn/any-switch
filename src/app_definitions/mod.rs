@@ -559,36 +559,56 @@ fn validate_override_checks(checks: &[OverrideCheckDefinition]) -> Result<()> {
                 }
             }
             "json_object_keys_non_empty" => {
-                if check.path.is_none() || check.json_path.is_none() || check.keys.is_empty() {
+                let Some(json_path) = check.json_path.as_deref() else {
+                    return Err(anyhow!(
+                        "DefinitionLoadFailed: json_object_keys_non_empty override check requires path, json_path, and keys"
+                    ));
+                };
+                if check.path.is_none() || check.keys.is_empty() {
                     return Err(anyhow!(
                         "DefinitionLoadFailed: json_object_keys_non_empty override check requires path, json_path, and keys"
                     ));
                 }
-                validate_simple_json_path(check.json_path.as_deref().unwrap())?;
+                validate_simple_json_path(json_path)?;
             }
             "json_string_non_empty" => {
-                if check.path.is_none() || check.json_path.is_none() || check.reason.is_none() {
+                let Some(json_path) = check.json_path.as_deref() else {
+                    return Err(anyhow!(
+                        "DefinitionLoadFailed: json_string_non_empty override check requires path, json_path, and reason"
+                    ));
+                };
+                if check.path.is_none() || check.reason.is_none() {
                     return Err(anyhow!(
                         "DefinitionLoadFailed: json_string_non_empty override check requires path, json_path, and reason"
                     ));
                 }
-                validate_simple_json_path(check.json_path.as_deref().unwrap())?;
+                validate_simple_json_path(json_path)?;
             }
             "managed_json_object_keys_non_empty" => {
-                if check.json_path.is_none() || check.keys.is_empty() {
+                let Some(json_path) = check.json_path.as_deref() else {
+                    return Err(anyhow!(
+                        "DefinitionLoadFailed: managed_json_object_keys_non_empty override check requires json_path and keys"
+                    ));
+                };
+                if check.keys.is_empty() {
                     return Err(anyhow!(
                         "DefinitionLoadFailed: managed_json_object_keys_non_empty override check requires json_path and keys"
                     ));
                 }
-                validate_simple_json_path(check.json_path.as_deref().unwrap())?;
+                validate_simple_json_path(json_path)?;
             }
             "managed_json_path_present" => {
-                if check.json_path.is_none() || check.reason.is_none() {
+                let Some(json_path) = check.json_path.as_deref() else {
+                    return Err(anyhow!(
+                        "DefinitionLoadFailed: managed_json_path_present override check requires json_path and reason"
+                    ));
+                };
+                if check.reason.is_none() {
                     return Err(anyhow!(
                         "DefinitionLoadFailed: managed_json_path_present override check requires json_path and reason"
                     ));
                 }
-                validate_simple_json_path(check.json_path.as_deref().unwrap())?;
+                validate_simple_json_path(json_path)?;
             }
             other => return Err(anyhow!("UnknownHandler: {other}")),
         }

@@ -24,7 +24,12 @@ advisory flow, or contact the maintainer listed for the repository. Include:
 - The tool does not perform login or account recovery.
 - Static profile secrets are stored locally in `profiles.yaml`.
 - OAuth capture blobs are stored locally under `captures/` and `backups/`.
+- `ANY_SWITCH_HOME` should stay out of cloud-synced folders such as iCloud
+  Drive, Dropbox, OneDrive, and Google Drive; `doctor` reports a warning for
+  known sync roots.
 - Commands must not print secret fields or capture blob contents.
+- Repository commits and release/source packages must not include local agent
+  settings, generated manual evidence, smoke-test state, or OS metadata files.
 - Target paths must remain inside the current user's home and outside
   `ANY_SWITCH_HOME`.
 - OAuth capture operations require the target app to be stopped unless the user
