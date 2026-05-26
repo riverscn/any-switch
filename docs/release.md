@@ -56,8 +56,7 @@ Each archive contains:
 - `README.md`
 - `CONTRIBUTING.md`
 - `SECURITY.md`
-- `LICENSE-APACHE`
-- `LICENSE-MIT`
+- `LICENSE`
 - `docs/design.md`
 - `docs/release.md`
 - `docs/acceptance.md`

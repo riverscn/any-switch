@@ -3,5 +3,6 @@
 .smoke-*
 .test-*
 manual-evidence-*.md
+!docs/manual-evidence-template.md
 .claude/settings.local.json
 .tmp

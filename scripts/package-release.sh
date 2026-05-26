@@ -23,7 +23,7 @@ fi
 mkdir -p "${package_dir}/docs" "${package_dir}/scripts" "${package_dir}/app_definitions/builtin"
 cp "${binary}" "${package_dir}/any-switch"
 chmod 0755 "${package_dir}/any-switch"
-cp README.md CONTRIBUTING.md SECURITY.md LICENSE-APACHE LICENSE-MIT "${package_dir}/"
+cp README.md CONTRIBUTING.md SECURITY.md LICENSE "${package_dir}/"
 cp docs/design.md docs/release.md docs/acceptance.md docs/manual-verification.md docs/manual-evidence-template.md "${package_dir}/docs/"
 cp scripts/manual-evidence.sh "${package_dir}/scripts/"
 cp src/app_definitions/builtin/*.yaml "${package_dir}/app_definitions/builtin/"
