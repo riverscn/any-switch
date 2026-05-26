@@ -1,6 +1,6 @@
 use crate::backup::sha256_hex;
 use crate::paths::{ensure_dir_private, write_private};
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, Result};
 use std::fs;
 use std::path::PathBuf;
 
@@ -63,6 +63,7 @@ fn write_platform_generic_password(service: &str, account: &str, bytes: &[u8]) -
 #[cfg(target_os = "macos")]
 mod macos {
     use super::*;
+    use anyhow::Context;
     use libc::{c_char, c_void};
     use std::ptr;
 
