@@ -15,19 +15,19 @@ pub struct Paths {
 impl Paths {
     pub fn discover() -> Result<Self> {
         let home = current_os_home()?;
-        let switch_home = match env::var_os("SWITCH_CLI_HOME") {
+        let switch_home = match env::var_os("ANY_SWITCH_HOME") {
             Some(raw) => {
                 let path = PathBuf::from(raw);
                 if !path.is_absolute() {
-                    return Err(anyhow!("SWITCH_CLI_HOME must be absolute"));
+                    return Err(anyhow!("ANY_SWITCH_HOME must be absolute"));
                 }
                 path
             }
-            None => home.join(".switch-cli"),
+            None => home.join(".any-switch"),
         };
-        ensure_inside_home(&switch_home, &home).map_err(|err| anyhow!("SWITCH_CLI_HOME {err}"))?;
+        ensure_inside_home(&switch_home, &home).map_err(|err| anyhow!("ANY_SWITCH_HOME {err}"))?;
         ensure_existing_ancestor_inside_home(&switch_home, &home)
-            .map_err(|err| anyhow!("SWITCH_CLI_HOME {err}"))?;
+            .map_err(|err| anyhow!("ANY_SWITCH_HOME {err}"))?;
         Ok(Self { home, switch_home })
     }
 
@@ -91,7 +91,7 @@ impl Paths {
     pub fn ensure_outside_switch_home(&self, path: &Path) -> Result<()> {
         if is_inside(path, &self.switch_home) {
             return Err(anyhow!(
-                "path must not be inside SWITCH_CLI_HOME: {}",
+                "path must not be inside ANY_SWITCH_HOME: {}",
                 path.display()
             ));
         }
@@ -103,7 +103,7 @@ impl Paths {
             let real_path = canonical_existing_ancestor(path)?;
             if is_inside(&real_path, &real_switch_home) {
                 return Err(anyhow!(
-                    "path resolves inside SWITCH_CLI_HOME: {} -> {}",
+                    "path resolves inside ANY_SWITCH_HOME: {} -> {}",
                     path.display(),
                     real_path.display()
                 ));
@@ -309,12 +309,12 @@ pub(crate) fn current_os_home() -> Result<PathBuf> {
     #[cfg(unix)]
     {
         #[cfg(debug_assertions)]
-        if let Some(raw) = env::var_os("SWITCH_CLI_TEST_HOME") {
+        if let Some(raw) = env::var_os("ANY_SWITCH_TEST_HOME") {
             let path = PathBuf::from(raw);
             if path.is_absolute() {
                 return Ok(path);
             }
-            return Err(anyhow!("SWITCH_CLI_TEST_HOME must be absolute"));
+            return Err(anyhow!("ANY_SWITCH_TEST_HOME must be absolute"));
         }
 
         let uid = unsafe { libc::getuid() };
@@ -380,7 +380,7 @@ mod tests {
     fn current_os_user_ignores_user_env() {
         let _guard = ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
         let previous = env::var_os("USER");
-        env::set_var("USER", "spoofed-switch-cli-user");
+        env::set_var("USER", "spoofed-any-switch-user");
 
         let user = current_os_user();
 
@@ -389,7 +389,7 @@ mod tests {
         } else {
             env::remove_var("USER");
         }
-        assert_ne!(user, "spoofed-switch-cli-user");
+        assert_ne!(user, "spoofed-any-switch-user");
     }
 
     #[cfg(unix)]
@@ -397,9 +397,9 @@ mod tests {
     fn current_os_home_ignores_home_env() {
         let _guard = ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
         let previous_home = env::var_os("HOME");
-        let previous_test_home = env::var_os("SWITCH_CLI_TEST_HOME");
-        env::set_var("HOME", "/tmp/spoofed-switch-cli-home");
-        env::remove_var("SWITCH_CLI_TEST_HOME");
+        let previous_test_home = env::var_os("ANY_SWITCH_TEST_HOME");
+        env::set_var("HOME", "/tmp/spoofed-any-switch-home");
+        env::remove_var("ANY_SWITCH_TEST_HOME");
 
         let home = current_os_home().unwrap();
 
@@ -409,11 +409,11 @@ mod tests {
             env::remove_var("HOME");
         }
         if let Some(previous_test_home) = previous_test_home {
-            env::set_var("SWITCH_CLI_TEST_HOME", previous_test_home);
+            env::set_var("ANY_SWITCH_TEST_HOME", previous_test_home);
         } else {
-            env::remove_var("SWITCH_CLI_TEST_HOME");
+            env::remove_var("ANY_SWITCH_TEST_HOME");
         }
-        assert_ne!(home, PathBuf::from("/tmp/spoofed-switch-cli-home"));
+        assert_ne!(home, PathBuf::from("/tmp/spoofed-any-switch-home"));
     }
 
     #[cfg(unix)]
@@ -422,24 +422,24 @@ mod tests {
         let _guard = ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
         let home = tempfile::tempdir().unwrap();
         let outside = tempfile::tempdir().unwrap();
-        let previous_home = env::var_os("SWITCH_CLI_TEST_HOME");
-        let previous_switch_home = env::var_os("SWITCH_CLI_HOME");
-        env::set_var("SWITCH_CLI_TEST_HOME", home.path());
-        env::set_var("SWITCH_CLI_HOME", outside.path());
+        let previous_home = env::var_os("ANY_SWITCH_TEST_HOME");
+        let previous_switch_home = env::var_os("ANY_SWITCH_HOME");
+        env::set_var("ANY_SWITCH_TEST_HOME", home.path());
+        env::set_var("ANY_SWITCH_HOME", outside.path());
 
         let err = Paths::discover().unwrap_err().to_string();
 
         if let Some(previous_home) = previous_home {
-            env::set_var("SWITCH_CLI_TEST_HOME", previous_home);
+            env::set_var("ANY_SWITCH_TEST_HOME", previous_home);
         } else {
-            env::remove_var("SWITCH_CLI_TEST_HOME");
+            env::remove_var("ANY_SWITCH_TEST_HOME");
         }
         if let Some(previous_switch_home) = previous_switch_home {
-            env::set_var("SWITCH_CLI_HOME", previous_switch_home);
+            env::set_var("ANY_SWITCH_HOME", previous_switch_home);
         } else {
-            env::remove_var("SWITCH_CLI_HOME");
+            env::remove_var("ANY_SWITCH_HOME");
         }
-        assert!(err.contains("SWITCH_CLI_HOME path is outside home"));
+        assert!(err.contains("ANY_SWITCH_HOME path is outside home"));
     }
 
     #[cfg(unix)]
@@ -448,25 +448,25 @@ mod tests {
         let _guard = ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
         let home = tempfile::tempdir().unwrap();
         let outside = tempfile::tempdir().unwrap();
-        let previous_home = env::var_os("SWITCH_CLI_TEST_HOME");
-        let previous_switch_home = env::var_os("SWITCH_CLI_HOME");
-        env::set_var("SWITCH_CLI_TEST_HOME", home.path());
-        env::remove_var("SWITCH_CLI_HOME");
-        std::os::unix::fs::symlink(outside.path(), home.path().join(".switch-cli")).unwrap();
+        let previous_home = env::var_os("ANY_SWITCH_TEST_HOME");
+        let previous_switch_home = env::var_os("ANY_SWITCH_HOME");
+        env::set_var("ANY_SWITCH_TEST_HOME", home.path());
+        env::remove_var("ANY_SWITCH_HOME");
+        std::os::unix::fs::symlink(outside.path(), home.path().join(".any-switch")).unwrap();
 
         let err = Paths::discover().unwrap_err().to_string();
 
         if let Some(previous_home) = previous_home {
-            env::set_var("SWITCH_CLI_TEST_HOME", previous_home);
+            env::set_var("ANY_SWITCH_TEST_HOME", previous_home);
         } else {
-            env::remove_var("SWITCH_CLI_TEST_HOME");
+            env::remove_var("ANY_SWITCH_TEST_HOME");
         }
         if let Some(previous_switch_home) = previous_switch_home {
-            env::set_var("SWITCH_CLI_HOME", previous_switch_home);
+            env::set_var("ANY_SWITCH_HOME", previous_switch_home);
         } else {
-            env::remove_var("SWITCH_CLI_HOME");
+            env::remove_var("ANY_SWITCH_HOME");
         }
-        assert!(err.contains("SWITCH_CLI_HOME path resolves outside home"));
+        assert!(err.contains("ANY_SWITCH_HOME path resolves outside home"));
     }
 
     #[cfg(unix)]
@@ -474,7 +474,7 @@ mod tests {
     fn target_must_not_resolve_inside_switch_home() {
         let home = tempfile::tempdir().unwrap();
         let real_switch_home = home.path().join("real-switch");
-        let switch_home_link = home.path().join(".switch-cli");
+        let switch_home_link = home.path().join(".any-switch");
         fs::create_dir_all(&real_switch_home).unwrap();
         std::os::unix::fs::symlink(&real_switch_home, &switch_home_link).unwrap();
         let paths = Paths {
@@ -487,7 +487,7 @@ mod tests {
             .unwrap_err()
             .to_string();
 
-        assert!(err.contains("resolves inside SWITCH_CLI_HOME"));
+        assert!(err.contains("resolves inside ANY_SWITCH_HOME"));
     }
 
     #[test]
@@ -498,7 +498,7 @@ mod tests {
         env::remove_var("TOOLBOX_CONFIG_DIR");
         let paths = Paths {
             home: home.path().to_path_buf(),
-            switch_home: home.path().join(".switch-cli"),
+            switch_home: home.path().join(".any-switch"),
         };
 
         let expanded = paths
@@ -567,7 +567,7 @@ mod tests {
         std::os::unix::fs::symlink(outside.path(), &link).unwrap();
         let paths = Paths {
             home: home.path().to_path_buf(),
-            switch_home: home.path().join(".switch-cli"),
+            switch_home: home.path().join(".any-switch"),
         };
         let err = paths
             .expand_target_path(&link.join("auth.json").display().to_string())

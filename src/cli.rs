@@ -32,7 +32,7 @@ use std::path::{Component, Path, PathBuf};
 use std::process::Command as ProcessCommand;
 
 #[derive(Debug, Parser)]
-#[command(name = "switch-cli", version, about = "Local profile/state switcher")]
+#[command(name = "any-switch", version, about = "Local profile/state switcher")]
 pub struct Cli {
     #[command(subcommand)]
     command: Command,
@@ -2429,7 +2429,7 @@ fn oauth_stale_warning(paths: &Paths, profile: &Profile, stale_days: u64) -> Res
             "age_days": age_days,
             "threshold_days": stale_days,
             "timestamp": timestamp,
-            "hint": format!("run `switch-cli import-current {} <name>` after confirming the target app can still refresh this account", profile.app)
+            "hint": format!("run `any-switch import-current {} <name>` after confirming the target app can still refresh this account", profile.app)
         })));
     }
     Ok(None)
@@ -3385,7 +3385,7 @@ fn doctor_command(
     if json_output {
         return doctor_json_command(paths, registry, app, startup_permission_warnings);
     }
-    println!("switch_home\t{}", paths.switch_home.display());
+    println!("any_switch_home\t{}", paths.switch_home.display());
     println!("profiles_yaml\t{}", paths.profiles_path().display());
     println!(
         "profiles.yaml secret-leak surface\t{}",
@@ -3513,7 +3513,7 @@ fn doctor_json_command(
         })
         .collect::<Vec<_>>();
     let mut output = json!({
-        "switch_home": paths.switch_home,
+        "any_switch_home": paths.switch_home,
         "profiles_yaml": paths.profiles_path(),
         "profiles_yaml_secret_leak_surface": cloud_sync_warning(paths),
         "permissions": {
@@ -4250,7 +4250,7 @@ fn backup_manifest_requires_app_stopped(paths: &Paths, app: &str, backup_id: &st
 
 fn no_active_hint(app: &str) -> String {
     format!(
-        "{app}: recommended next step is `switch-cli import-current {app} <name>`, not `switch-cli use <id>`, because use will not write back live state first and may overwrite it with a stale capture."
+        "{app}: recommended next step is `any-switch import-current {app} <name>`, not `any-switch use <id>`, because use will not write back live state first and may overwrite it with a stale capture."
     )
 }
 
@@ -4273,7 +4273,7 @@ fn cloud_sync_warning(paths: &Paths) -> &'static str {
         &["Google Drive"][..],
     ] {
         if path_starts_with_components(relative, marker) {
-            return "warning: SWITCH_CLI_HOME appears to be under a cloud sync directory";
+            return "warning: ANY_SWITCH_HOME appears to be under a cloud sync directory";
         }
     }
     "ok"
@@ -4445,7 +4445,7 @@ kinds:
         .unwrap();
         let paths = Paths {
             home: home.path().to_path_buf(),
-            switch_home: home.path().join(".switch-cli"),
+            switch_home: home.path().join(".any-switch"),
         };
         let definition = custom_oauth_definition();
 
@@ -4458,14 +4458,14 @@ kinds:
     #[test]
     fn cloud_sync_warning_matches_only_known_home_roots() {
         let home = tempfile::tempdir().unwrap();
-        let dropbox_switch_home = home.path().join("Dropbox").join(".switch-cli");
+        let dropbox_switch_home = home.path().join("Dropbox").join(".any-switch");
         let icloud_switch_home = home
             .path()
             .join("Library")
             .join("Mobile Documents")
-            .join(".switch-cli");
+            .join(".any-switch");
         let false_positive_switch_home =
-            home.path().join("Work-Dropbox-Archive").join(".switch-cli");
+            home.path().join("Work-Dropbox-Archive").join(".any-switch");
         fs::create_dir_all(&dropbox_switch_home).unwrap();
         fs::create_dir_all(&icloud_switch_home).unwrap();
         fs::create_dir_all(&false_positive_switch_home).unwrap();

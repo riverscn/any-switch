@@ -32,9 +32,9 @@ GitHub Releases, and `release_archive_includes_auditable_builtin_definitions`
 exercises the package script locally and verifies the archive contents,
 including read-only copies of the built-in App Definitions for audit and the
 manual evidence helper script. It also extracts the archive, runs the packaged
-`switch-cli --version` binary, runs `scripts/manual-evidence.sh --help`, and
+`any-switch --version` binary, runs `scripts/manual-evidence.sh --help`, and
 generates a redacted evidence file against the packaged binary while verifying
-that the helper removes its temporary `SWITCH_CLI_HOME`.
+that the helper removes its temporary `ANY_SWITCH_HOME`.
 
 ## Section 13 Criteria
 
@@ -96,7 +96,7 @@ checklist is in `docs/manual-verification.md`; use
 | A | Claude refresh token rotation experiment: capture before/after refresh and verify whether old captures remain usable. |
 | B | Claude Keychain / `oauthAccount` mismatch experiment: modify only one source and record Claude Code startup behavior. |
 | C | Claude runtime write-frequency and JSON-format sampling for `~/.claude.json`. |
-| E | Codex external restore flow: restore state outside switch-cli, then confirm `import-current` captures or refreshes the intended profile. |
+| E | Codex external restore flow: restore state outside any-switch, then confirm `import-current` captures or refreshes the intended profile. |
 
 Item D is already recorded in `docs/design.md` as the Codex CLI 0.133.0
 file-backed `auth.json` schema observation.

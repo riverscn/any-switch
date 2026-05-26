@@ -12,12 +12,12 @@ cargo build --locked --release
 cargo package --locked --allow-dirty --offline
 
 host_target="$(rustc -vV | sed -n 's/^host: //p')"
-output_dir="$(mktemp -d "${TMPDIR:-/tmp}/switch-cli-verify.XXXXXX")"
+output_dir="$(mktemp -d "${TMPDIR:-/tmp}/any-switch-verify.XXXXXX")"
 trap 'rm -rf "${output_dir}"' EXIT
 
-bash scripts/package-release.sh "local-verify" "${host_target}" target/release/switch-cli "${output_dir}"
+bash scripts/package-release.sh "local-verify" "${host_target}" target/release/any-switch "${output_dir}"
 (
   cd "${output_dir}"
-  shasum -a 256 -c "switch-cli-local-verify-${host_target}.tar.gz.sha256"
-  tar -tzf "switch-cli-local-verify-${host_target}.tar.gz" >/dev/null
+  shasum -a 256 -c "any-switch-local-verify-${host_target}.tar.gz.sha256"
+  tar -tzf "any-switch-local-verify-${host_target}.tar.gz" >/dev/null
 )

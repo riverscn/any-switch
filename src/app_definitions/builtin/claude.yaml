@@ -43,7 +43,7 @@ override_checks:
     json_path: $.apiKeyHelper
     reason: settings:apiKeyHelper
   - handler: managed_json_object_keys_non_empty
-    test_env: SWITCH_CLI_TEST_CLAUDE_MANAGED_SETTINGS_DIR
+    test_env: ANY_SWITCH_TEST_CLAUDE_MANAGED_SETTINGS_DIR
     macos_dir: "/Library/Application Support/ClaudeCode"
     linux_dir: "/etc/claude-code"
     windows_dir: "C:\\Program Files\\ClaudeCode"
@@ -53,14 +53,14 @@ override_checks:
       - ANTHROPIC_API_KEY
     reason_prefix: env
   - handler: managed_json_path_present
-    test_env: SWITCH_CLI_TEST_CLAUDE_MANAGED_SETTINGS_DIR
+    test_env: ANY_SWITCH_TEST_CLAUDE_MANAGED_SETTINGS_DIR
     macos_dir: "/Library/Application Support/ClaudeCode"
     linux_dir: "/etc/claude-code"
     windows_dir: "C:\\Program Files\\ClaudeCode"
     json_path: $.apiKeyHelper
     reason: apiKeyHelper
   - handler: managed_json_path_present
-    test_env: SWITCH_CLI_TEST_CLAUDE_MANAGED_SETTINGS_DIR
+    test_env: ANY_SWITCH_TEST_CLAUDE_MANAGED_SETTINGS_DIR
     macos_dir: "/Library/Application Support/ClaudeCode"
     linux_dir: "/etc/claude-code"
     windows_dir: "C:\\Program Files\\ClaudeCode"

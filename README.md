@@ -1,6 +1,6 @@
-# switch-cli
+# any-switch
 
-`switch-cli` is a local profile/state switcher for AI CLI tools. The MVP is
+`any-switch` is a local profile/state switcher for AI CLI tools. The MVP is
 focused on Claude Code and OpenAI Codex profile switching while keeping the core
 model generic: app definitions describe targets, and trusted core handlers apply
 structured profile records to local files.
@@ -69,7 +69,7 @@ This repository now contains a Rust CLI foundation with:
   `$EDITOR`, validates immutable fields and schema, and removes the fragment
   after use;
 - `doctor` reports the required profiles.yaml secret-leak surface check and
-  warns when files or directories under `SWITCH_CLI_HOME` have widened Unix
+  warns when files or directories under `ANY_SWITCH_HOME` have widened Unix
   permissions;
 - `doctor <app>` also reports process probe matches, active profile metadata,
   identity, OAuth capture completeness, and resolved managed target paths
@@ -83,7 +83,7 @@ This repository now contains a Rust CLI foundation with:
 - `scripts/manual-evidence.sh` initializes a redacted, read-only manual
   verification evidence file for release-candidate real-app checks;
 - secret argv rejection and sanitized output;
-- basic state tracking under `~/.switch-cli` or `SWITCH_CLI_HOME`;
+- basic state tracking under `~/.any-switch` or `ANY_SWITCH_HOME`;
 - CI and release workflows for Linux x86_64, macOS x86_64, and macOS arm64
   binaries.
 
@@ -101,26 +101,26 @@ cargo install --path .
 Use a test home first:
 
 ```bash
-export SWITCH_CLI_HOME="$HOME/.switch-cli-dev"
+export ANY_SWITCH_HOME="$HOME/.any-switch-dev"
 
-switch-cli apps
-switch-cli config path
+any-switch apps
+any-switch config path
 
-printf '%s' "$ANTHROPIC_AUTH_TOKEN" | switch-cli add claude glm \
+printf '%s' "$ANTHROPIC_AUTH_TOKEN" | any-switch add claude glm \
   --kind env_injection \
   --field base_url=https://open.bigmodel.cn/api/anthropic \
   --field models.default=glm-4.6 \
   --secret-field auth_token=@stdin
 
-switch-cli use claude-glm --dry-run
-switch-cli use claude-glm --yes
-switch-cli status claude
+any-switch use claude-glm --dry-run
+any-switch use claude-glm --yes
+any-switch status claude
 ```
 
 Codex API-key profile:
 
 ```bash
-printf '%s' "$OPENAI_API_KEY" | switch-cli add codex openai \
+printf '%s' "$OPENAI_API_KEY" | any-switch add codex openai \
   --kind file_template \
   --field model=gpt-5-codex \
   --field model_provider=openai \
@@ -133,7 +133,7 @@ printf '%s' "$OPENAI_API_KEY" | switch-cli add codex openai \
   `profiles.yaml` with file mode `0600`; existing target files with wider
   permissions are tightened on write, while stricter owner-only permissions are
   preserved.
-- Do not commit `~/.switch-cli/profiles.yaml`.
+- Do not commit `~/.any-switch/profiles.yaml`.
 - Commands redact sensitive fields in human and JSON output.
 - Quit target apps before any write operation when practical. OAuth capture
   reads and writes require the target app to be stopped; `--allow-running` is

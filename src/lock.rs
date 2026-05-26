@@ -98,7 +98,7 @@ pub fn acquire_target_locks(paths: &Paths, mut target_ids: Vec<String>) -> Resul
 }
 
 fn lock_wait_timeout() -> Duration {
-    env::var("SWITCH_CLI_LOCK_WAIT_MS")
+    env::var("ANY_SWITCH_LOCK_WAIT_MS")
         .ok()
         .and_then(|value| value.parse::<u64>().ok())
         .map(Duration::from_millis)

@@ -277,7 +277,7 @@ mod tests {
         let dir = tempdir().unwrap();
         let paths = Paths {
             home: dir.path().to_path_buf(),
-            switch_home: dir.path().join(".switch-cli"),
+            switch_home: dir.path().join(".any-switch"),
         };
         let record = serde_json::json!({
             "operation_id": "op-1",
@@ -295,7 +295,7 @@ mod tests {
         let dir = tempdir().unwrap();
         let paths = Paths {
             home: dir.path().to_path_buf(),
-            switch_home: dir.path().join(".switch-cli"),
+            switch_home: dir.path().join(".any-switch"),
         };
         fs::create_dir_all(paths.state_dir()).unwrap();
         fs::write(
@@ -322,7 +322,7 @@ mod tests {
         let dir = tempdir().unwrap();
         let paths = Paths {
             home: dir.path().to_path_buf(),
-            switch_home: dir.path().join(".switch-cli"),
+            switch_home: dir.path().join(".any-switch"),
         };
         fs::create_dir_all(pending_dir(&paths)).unwrap();
         fs::write(

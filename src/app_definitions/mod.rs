@@ -890,7 +890,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let paths = Paths {
             home: dir.path().to_path_buf(),
-            switch_home: dir.path().join(".switch-cli"),
+            switch_home: dir.path().join(".any-switch"),
         };
         let registry = DefinitionRegistry::load(&paths).unwrap();
         assert_eq!(registry.iter().count(), BUILTIN_DEFINITIONS.len());

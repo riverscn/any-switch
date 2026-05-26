@@ -3,9 +3,9 @@ set -euo pipefail
 
 usage() {
   echo "usage: manual-evidence.sh [output.md]" >&2
-  echo "set SWITCH_CLI_BIN=/path/to/switch-cli to test a packaged binary" >&2
-  echo "set SWITCH_CLI_HOME=/abs/path to use an existing switch home" >&2
-  echo "without SWITCH_CLI_HOME, a temporary switch home is created and removed" >&2
+  echo "set ANY_SWITCH_BIN=/path/to/any-switch to test a packaged binary" >&2
+  echo "set ANY_SWITCH_HOME=/abs/path to use an existing any-switch home" >&2
+  echo "without ANY_SWITCH_HOME, a temporary any-switch home is created and removed" >&2
   echo "refuses to overwrite an existing evidence file" >&2
 }
 
@@ -14,7 +14,7 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   exit 0
 fi
 
-switch_cli="${SWITCH_CLI_BIN:-switch-cli}"
+any_switch="${ANY_SWITCH_BIN:-any-switch}"
 timestamp="$(date -u '+%Y%m%dT%H%M%SZ')"
 output="${1:-manual-evidence-${timestamp}.md}"
 
@@ -24,8 +24,8 @@ if [[ -e "${output}" ]]; then
   exit 2
 fi
 
-if ! command -v "${switch_cli}" >/dev/null 2>&1 && [[ ! -x "${switch_cli}" ]]; then
-  echo "switch-cli binary not found: ${switch_cli}" >&2
+if ! command -v "${any_switch}" >/dev/null 2>&1 && [[ ! -x "${any_switch}" ]]; then
+  echo "any-switch binary not found: ${any_switch}" >&2
   usage
   exit 2
 fi
@@ -34,10 +34,10 @@ umask 077
 
 temporary_switch_home=""
 switch_home_note="provided by environment"
-if [[ -z "${SWITCH_CLI_HOME:-}" ]]; then
-  temporary_switch_home="${HOME:?}/.switch-cli-manual-evidence-${timestamp}-$$"
+if [[ -z "${ANY_SWITCH_HOME:-}" ]]; then
+  temporary_switch_home="${HOME:?}/.any-switch-manual-evidence-${timestamp}-$$"
   mkdir -p "${temporary_switch_home}"
-  export SWITCH_CLI_HOME="${temporary_switch_home}"
+  export ANY_SWITCH_HOME="${temporary_switch_home}"
   switch_home_note="temporary; removed when this script exits"
 fi
 
@@ -87,12 +87,12 @@ redact_output() {
   printf -- '- Operator:\n'
   printf -- '- OS and version:\n'
   printf -- '- CPU architecture: %s\n' "$(uname -m)"
-  printf -- '- `switch-cli --version`:\n'
+  printf -- '- `any-switch --version`:\n'
   printf -- '- Git commit:\n'
   printf -- '- Claude Code version:\n'
   printf -- '- Codex CLI version:\n'
-  printf -- '- `SWITCH_CLI_HOME` used: %s\n' "${SWITCH_CLI_HOME:-<default>}"
-  printf -- '- `SWITCH_CLI_HOME` note: %s\n' "${switch_home_note}"
+  printf -- '- `ANY_SWITCH_HOME` used: %s\n' "${ANY_SWITCH_HOME:-<default>}"
+  printf -- '- `ANY_SWITCH_HOME` note: %s\n' "${switch_home_note}"
 } >"${output}"
 
 run_section "Host OS" uname -a
@@ -101,7 +101,7 @@ if command -v sw_vers >/dev/null 2>&1; then
 elif [[ -r /etc/os-release ]]; then
   run_section "Linux Version" sh -c 'cat /etc/os-release'
 fi
-run_section "switch-cli Version" "${switch_cli}" --version
+run_section "any-switch Version" "${any_switch}" --version
 if command -v git >/dev/null 2>&1 && git rev-parse --show-toplevel >/dev/null 2>&1; then
   run_section "Git Commit" git rev-parse HEAD
 fi
@@ -122,11 +122,11 @@ else
   } >>"${output}"
 fi
 
-run_section "switch-cli Doctor" "${switch_cli}" doctor
-run_section "Claude Doctor" "${switch_cli}" doctor claude
-run_section "Claude Status JSON" "${switch_cli}" status claude --json
-run_section "Codex Doctor" "${switch_cli}" doctor codex
-run_section "Codex Status JSON" "${switch_cli}" status codex --json
+run_section "any-switch Doctor" "${any_switch}" doctor
+run_section "Claude Doctor" "${any_switch}" doctor claude
+run_section "Claude Status JSON" "${any_switch}" status claude --json
+run_section "Codex Doctor" "${any_switch}" doctor codex
+run_section "Codex Status JSON" "${any_switch}" status codex --json
 
 {
   printf '\n## Manual Checklist\n\n'

@@ -11,15 +11,15 @@ pub struct RunningProcess {
 }
 
 pub fn detect_running(definition: &AppDefinition) -> Result<Vec<RunningProcess>> {
-    if std::env::var_os("SWITCH_CLI_SKIP_PROCESS_PROBE").as_deref()
+    if std::env::var_os("ANY_SWITCH_SKIP_PROCESS_PROBE").as_deref()
         == Some(std::ffi::OsStr::new("1"))
     {
         return Ok(Vec::new());
     }
-    if let Ok(fixture) = std::env::var("SWITCH_CLI_PROCESS_PROBE_FIXTURE") {
+    if let Ok(fixture) = std::env::var("ANY_SWITCH_PROCESS_PROBE_FIXTURE") {
         return Ok(parse_fixture(definition, &fixture));
     }
-    if let Ok(error) = std::env::var("SWITCH_CLI_PROCESS_PROBE_ERROR_FIXTURE") {
+    if let Ok(error) = std::env::var("ANY_SWITCH_PROCESS_PROBE_ERROR_FIXTURE") {
         return Err(anyhow!("process probe fixture error: {error}"));
     }
     if definition.process_probe.names.is_empty() {

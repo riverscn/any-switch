@@ -1,6 +1,6 @@
 # Contributing
 
-`switch-cli` is intentionally conservative because it edits local credential and
+`any-switch` is intentionally conservative because it edits local credential and
 configuration files. Contributions should keep that bias.
 
 ## Development Setup
@@ -11,10 +11,10 @@ cargo test
 cargo clippy --all-targets -- -D warnings
 ```
 
-Use a disposable switch home while testing manually:
+Use a disposable any-switch home while testing manually:
 
 ```bash
-export SWITCH_CLI_HOME="$PWD/.smoke-switch"
+export ANY_SWITCH_HOME="$PWD/.smoke-switch"
 export CODEX_HOME="$PWD/.smoke-codex"
 ```
 

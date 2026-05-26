@@ -3,7 +3,7 @@ set -euo pipefail
 
 tag="${1:?usage: package-release.sh <tag> <target> [binary] [output-dir]}"
 target="${2:?usage: package-release.sh <tag> <target> [binary] [output-dir]}"
-binary="${3:-target/${target}/release/switch-cli}"
+binary="${3:-target/${target}/release/any-switch}"
 output_dir="${4:-.}"
 
 if [[ ! "${tag}" =~ ^[A-Za-z0-9._-]+$ || ! "${target}" =~ ^[A-Za-z0-9._-]+$ ]]; then
@@ -11,7 +11,7 @@ if [[ ! "${tag}" =~ ^[A-Za-z0-9._-]+$ || ! "${target}" =~ ^[A-Za-z0-9._-]+$ ]]; 
   exit 2
 fi
 
-package="switch-cli-${tag}-${target}"
+package="any-switch-${tag}-${target}"
 dist_dir="${output_dir}/dist"
 package_dir="${dist_dir}/${package}"
 
@@ -21,8 +21,8 @@ if [[ -e "${package_dir}" ]]; then
 fi
 
 mkdir -p "${package_dir}/docs" "${package_dir}/scripts" "${package_dir}/app_definitions/builtin"
-cp "${binary}" "${package_dir}/switch-cli"
-chmod 0755 "${package_dir}/switch-cli"
+cp "${binary}" "${package_dir}/any-switch"
+chmod 0755 "${package_dir}/any-switch"
 cp README.md CONTRIBUTING.md SECURITY.md LICENSE-APACHE LICENSE-MIT "${package_dir}/"
 cp docs/design.md docs/release.md docs/acceptance.md docs/manual-verification.md docs/manual-evidence-template.md "${package_dir}/docs/"
 cp scripts/manual-evidence.sh "${package_dir}/scripts/"

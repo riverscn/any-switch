@@ -47,12 +47,12 @@ runner family.
 The workflow packages each binary through `scripts/package-release.sh` as:
 
 ```text
-switch-cli-<tag>-<target>.tar.gz
+any-switch-<tag>-<target>.tar.gz
 ```
 
 Each archive contains:
 
-- `switch-cli`
+- `any-switch`
 - `README.md`
 - `CONTRIBUTING.md`
 - `SECURITY.md`
@@ -66,7 +66,7 @@ Each archive contains:
 - `scripts/manual-evidence.sh`
 - `app_definitions/builtin/*.yaml`
 
-The workflow also uploads `switch-cli-<tag>-<target>.tar.gz.sha256` next to each
+The workflow also uploads `any-switch-<tag>-<target>.tar.gz.sha256` next to each
 archive.
 
 ## Post-Release Checks
@@ -74,10 +74,10 @@ archive.
 Download each archive from the release page and verify:
 
 ```bash
-shasum -a 256 -c switch-cli-<tag>-<target>.tar.gz.sha256
-tar -tzf switch-cli-<tag>-<target>.tar.gz
-tar -xzf switch-cli-<tag>-<target>.tar.gz
-./switch-cli-<tag>-<target>/switch-cli --version
+shasum -a 256 -c any-switch-<tag>-<target>.tar.gz.sha256
+tar -tzf any-switch-<tag>-<target>.tar.gz
+tar -xzf any-switch-<tag>-<target>.tar.gz
+./any-switch-<tag>-<target>/any-switch --version
 ```
 
 Before claiming full MVP coverage, run the real-app manual checks in
@@ -85,7 +85,7 @@ Before claiming full MVP coverage, run the real-app manual checks in
 initialize a redacted evidence file against the packaged binary:
 
 ```bash
-SWITCH_CLI_BIN=./switch-cli-<tag>-<target>/switch-cli \
-  ./switch-cli-<tag>-<target>/scripts/manual-evidence.sh \
+ANY_SWITCH_BIN=./any-switch-<tag>-<target>/any-switch \
+  ./any-switch-<tag>-<target>/scripts/manual-evidence.sh \
   manual-evidence-$(date -u +%Y%m%dT%H%M%SZ).md
 ```
