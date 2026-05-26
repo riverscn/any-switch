@@ -108,8 +108,28 @@ fn release_workflow_uploads_documented_binary_artifacts() {
             "docs/release.md must document release target {target}"
         );
     }
+    for secret in [
+        "APPLE_DEVELOPER_ID_CERTIFICATE_BASE64",
+        "APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD",
+        "APPLE_CODESIGN_IDENTITY",
+        "APPLE_ID",
+        "APPLE_APP_SPECIFIC_PASSWORD",
+        "APPLE_TEAM_ID",
+    ] {
+        assert!(
+            workflow_text.contains(secret),
+            "release workflow must expose optional macOS signing secret {secret}"
+        );
+        assert!(
+            release_doc.contains(secret),
+            "docs/release.md must document macOS signing secret {secret}"
+        );
+    }
 
     let steps = workflow["jobs"]["build"]["steps"].as_sequence().unwrap();
+    assert!(steps.iter().any(|step| step["run"]
+        .as_str()
+        .is_some_and(|run| run.contains("scripts/sign-macos-binary.sh"))));
     assert!(steps.iter().any(|step| step["run"]
         .as_str()
         .is_some_and(|run| run.contains("scripts/package-release.sh"))));

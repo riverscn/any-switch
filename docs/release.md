@@ -44,6 +44,31 @@ The macOS runner labels are pinned by architecture instead of using
 `macos-latest`, so release packages are built on the matching GitHub-hosted
 runner family.
 
+## Optional macOS Signing
+
+macOS binaries are signed before packaging only when signing secrets are present
+in GitHub Actions. Missing secrets do not block release artifacts; the workflow
+prints a skip message and packages the unsigned binary.
+
+Required secrets for signing:
+
+- `APPLE_DEVELOPER_ID_CERTIFICATE_BASE64`: base64-encoded Developer ID
+  Application `.p12` certificate.
+- `APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD`: password for the `.p12` file.
+- `APPLE_CODESIGN_IDENTITY`: Developer ID Application signing identity name.
+
+Additional secrets for notarization:
+
+- `APPLE_ID`: Apple ID used with `notarytool`.
+- `APPLE_APP_SPECIFIC_PASSWORD`: app-specific password for that Apple ID.
+- `APPLE_TEAM_ID`: Apple Developer Team ID.
+
+If signing secrets are present but notarization secrets are missing, the workflow
+signs and verifies the Mach-O binary, skips notarization, and continues. If all
+secrets are present, `scripts/sign-macos-binary.sh` signs the binary and submits
+a temporary ZIP to Apple's notary service before packaging the signed binary in
+the release tarball.
+
 The workflow packages each binary through `scripts/package-release.sh` as:
 
 ```text

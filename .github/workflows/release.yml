@@ -36,6 +36,16 @@ jobs:
       - run: rustup toolchain install 1.95.0 --profile minimal --target ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
       - run: cargo build --locked --release --target ${{ matrix.target }}
+      - name: Sign macOS binary
+        shell: bash
+        env:
+          APPLE_DEVELOPER_ID_CERTIFICATE_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE_BASE64 }}
+          APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+          APPLE_CODESIGN_IDENTITY: ${{ secrets.APPLE_CODESIGN_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: bash scripts/sign-macos-binary.sh "${{ matrix.target }}" "target/${{ matrix.target }}/release/any-switch"
       - name: Package
         shell: bash
         run: bash scripts/package-release.sh "${{ github.ref_name }}" "${{ matrix.target }}"
