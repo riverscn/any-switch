@@ -34,6 +34,7 @@ reject_pattern() {
 }
 
 echo "==> verifying Cargo source package"
+cargo fetch --locked
 cargo_package_list="${tmp_root}/cargo-package-list.txt"
 cargo package --locked --allow-dirty --list >"${cargo_package_list}"
 require_line "Cargo.toml" "${cargo_package_list}"
