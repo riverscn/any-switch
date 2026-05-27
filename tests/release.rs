@@ -188,39 +188,23 @@ fn workflow_yaml_files_parse_with_rust_dependencies() {
                 .is_none(),
         "release should use Node 24-compatible action versions instead of relying on a temporary runtime override"
     );
-    assert_eq!(
-        release_workflow["jobs"]["build"]["permissions"]["contents"].as_str(),
-        Some("read"),
-        "release build job should not need GitHub Release write permission"
-    );
-    assert_eq!(
-        release_workflow["jobs"]["build"]["permissions"]["artifact-metadata"].as_str(),
-        Some("write"),
-        "release build job should grant artifact metadata write for upload-artifact"
-    );
-    assert_eq!(
-        release_workflow["jobs"]["publish"]["permissions"]["actions"].as_str(),
-        Some("read"),
-        "release publish job should grant actions read for download-artifact"
-    );
-    assert_eq!(
-        release_workflow["jobs"]["publish"]["permissions"]["artifact-metadata"].as_str(),
-        Some("read"),
-        "release publish job should grant artifact metadata read for downloaded artifact records"
+    assert!(
+        release_workflow["jobs"].get("build").is_none(),
+        "release workflow must not publish unsigned prebuilt binary artifacts"
     );
     assert_eq!(
         release_workflow["jobs"]["publish"]["permissions"]["contents"].as_str(),
         Some("write"),
-        "release publish job must opt into contents: write for GitHub Release uploads"
+        "release publish job must opt into contents: write for GitHub Release notes"
+    );
+    assert_eq!(
+        release_workflow["jobs"]["publish"]["needs"].as_str(),
+        Some("verify"),
+        "release publish job must wait for verification"
     );
     assert_contains_all(
         &release_text,
-        &[
-            "actions/checkout@v6",
-            "softprops/action-gh-release@v3",
-            "actions/upload-artifact@v7",
-            "actions/download-artifact@v7",
-        ],
+        &["actions/checkout@v6", "softprops/action-gh-release@v3"],
         "release workflow should use current Node 24-compatible action versions",
     );
     assert_not_contains_any(
@@ -228,9 +212,11 @@ fn workflow_yaml_files_parse_with_rust_dependencies() {
         &[
             "actions/checkout@v4",
             "softprops/action-gh-release@v2",
+            "actions/upload-artifact",
+            "actions/download-artifact",
             "Swatinem/rust-cache",
         ],
-        "release workflow should avoid deprecated or uncategorized JavaScript actions",
+        "release workflow should avoid deprecated actions and unsigned binary artifact publishing",
     );
     assert_contains_all(
         &release_text,
@@ -239,14 +225,8 @@ fn workflow_yaml_files_parse_with_rust_dependencies() {
             "cargo pkgid",
             "GITHUB_REF_NAME",
             "body_path: CHANGELOG.md",
-            "cargo clippy --locked --target x86_64-pc-windows-msvc",
-            "lock::tests::second_lock_is_busy",
-            "paths::tests::current_os_user_prefers_username_on_windows",
-            "process::tests::matches_windows_exe_names_case_insensitively",
-            "process::tests::parses_quoted_csv_fields",
-            "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/manual-evidence.ps1 -Help",
         ],
-        "release workflow should verify tag alignment and Windows target behavior",
+        "release workflow should verify tag alignment and publish checked-in release notes",
     );
     let verify_text = fs::read_to_string(manifest_dir.join("scripts/verify-local.sh")).unwrap();
     assert!(verify_text.contains("git diff --check"));
@@ -352,9 +332,8 @@ fn cargo_source_package_excludes_local_agent_and_evidence_files() {
         "README license section should link to the packaged LICENSE file"
     );
     assert!(
-        readme.contains("Rust `1.95.0`")
-            && readme.contains("rust-version = \"1.95\"")
-            && readme.contains("rust-toolchain.toml"),
+        readme.contains("rustup toolchain install 1.95.0")
+            && readme.contains("cargo install any-switch --locked"),
         "README should document the source-build Rust toolchain requirement"
     );
     let normalized_readme = readme.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -490,7 +469,62 @@ fn cargo_source_package_excludes_local_agent_and_evidence_files() {
 }
 
 #[test]
-fn release_workflow_uploads_documented_binary_artifacts() {
+fn npm_package_builds_from_cargo_source_instead_of_downloading_binaries() {
+    let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let cargo_text = fs::read_to_string(manifest_dir.join("Cargo.toml")).unwrap();
+    let cargo_manifest: toml_edit::DocumentMut = cargo_text.parse().unwrap();
+    let cargo_version = cargo_manifest["package"]["version"].as_str().unwrap();
+
+    let package_text = fs::read_to_string(manifest_dir.join("package.json")).unwrap();
+    let package_json: serde_json::Value = serde_json::from_str(&package_text).unwrap();
+    assert_eq!(package_json["name"].as_str(), Some("any-switch"));
+    assert_eq!(package_json["version"].as_str(), Some(cargo_version));
+    assert_eq!(
+        package_json["scripts"]["postinstall"].as_str(),
+        Some("node npm/install.js")
+    );
+    assert_eq!(
+        package_json["bin"]["any-switch"].as_str(),
+        Some("bin/any-switch.js")
+    );
+    let files = package_json["files"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|value| value.as_str().unwrap())
+        .collect::<Vec<_>>();
+    for required in [
+        "bin/",
+        "npm/",
+        "src/",
+        "build.rs",
+        "Cargo.toml",
+        "Cargo.lock",
+        "rust-toolchain.toml",
+    ] {
+        assert!(
+            files.contains(&required),
+            "npm package must include {required} for local Cargo builds"
+        );
+    }
+
+    let installer = fs::read_to_string(manifest_dir.join("npm/install.js")).unwrap();
+    assert!(installer.contains("cargo"));
+    assert!(installer.contains("build"));
+    assert!(installer.contains("--release"));
+    assert!(installer.contains("--locked"));
+    assert!(installer.contains("https://rustup.rs"));
+    assert!(!installer.contains("github.com/riverscn/any-switch/releases/download"));
+    assert!(!installer.contains("https.get"));
+    assert!(!installer.contains("sha256"));
+
+    let shim = fs::read_to_string(manifest_dir.join("bin/any-switch.js")).unwrap();
+    assert!(shim.contains("vendor"));
+    assert!(shim.contains("install.js"));
+}
+
+#[test]
+fn release_workflow_publishes_notes_without_unsigned_binary_artifacts() {
     let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let workflow_text =
         fs::read_to_string(manifest_dir.join(".github/workflows/release.yml")).unwrap();
@@ -507,21 +541,9 @@ fn release_workflow_uploads_documented_binary_artifacts() {
     assert!(workflow_text.contains("tag ${GITHUB_REF_NAME} does not match Cargo.toml version"));
     assert!(release_doc.contains("tag must match the package version in `Cargo.toml`"));
     assert_eq!(workflow["permissions"]["contents"].as_str(), Some("read"));
-    assert_eq!(
-        workflow["jobs"]["build"]["permissions"]["contents"].as_str(),
-        Some("read")
-    );
-    assert_eq!(
-        workflow["jobs"]["build"]["permissions"]["artifact-metadata"].as_str(),
-        Some("write")
-    );
-    assert_eq!(
-        workflow["jobs"]["publish"]["permissions"]["actions"].as_str(),
-        Some("read")
-    );
-    assert_eq!(
-        workflow["jobs"]["publish"]["permissions"]["artifact-metadata"].as_str(),
-        Some("read")
+    assert!(
+        workflow["jobs"].get("build").is_none(),
+        "release workflow must not build or upload unsigned binary artifacts"
     );
     assert_eq!(
         workflow["jobs"]["publish"]["permissions"]["contents"].as_str(),
@@ -529,33 +551,10 @@ fn release_workflow_uploads_documented_binary_artifacts() {
     );
     assert_eq!(
         workflow["jobs"]["publish"]["needs"].as_str(),
-        Some("build"),
-        "publish job must wait for all release target builds"
+        Some("verify"),
+        "publish job must wait for verification"
     );
 
-    let include = workflow["jobs"]["build"]["strategy"]["matrix"]["include"]
-        .as_sequence()
-        .unwrap();
-    let mut targets = include
-        .iter()
-        .map(|entry| entry["target"].as_str().unwrap().to_string())
-        .collect::<Vec<_>>();
-    targets.sort();
-    assert_eq!(
-        targets,
-        [
-            "aarch64-apple-darwin",
-            "x86_64-apple-darwin",
-            "x86_64-pc-windows-msvc",
-            "x86_64-unknown-linux-gnu"
-        ]
-    );
-    for target in &targets {
-        assert!(
-            release_doc.contains(target),
-            "docs/release.md must document release target {target}"
-        );
-    }
     assert!(
         release_doc.contains("macOS-evidenced stage release"),
         "docs/release.md must describe the current manual-evidence release scope"
@@ -574,7 +573,7 @@ fn release_workflow_uploads_documented_binary_artifacts() {
     );
     assert!(
         release_doc.contains("Actions Runner `v2.329.0`")
-            && release_doc.contains("Actions Runner `v2.327.1`"),
+            && !release_doc.contains("Actions Runner `v2.327.1`"),
         "docs/release.md must document self-hosted runner requirements for Node 24 actions"
     );
     let design_doc = fs::read_to_string(manifest_dir.join("docs/design.md")).unwrap();
@@ -605,24 +604,26 @@ fn release_workflow_uploads_documented_binary_artifacts() {
             && manual_verification.contains("deferred full section 13 evidence items A, B, and C"),
         "docs/manual-verification.md must distinguish the current-stage blocker from deferred full-coverage experiments"
     );
-    assert!(release_doc.contains("sha256sum -c any-switch-<tag>-<target>.tar.gz.sha256"));
-    for secret in [
-        "APPLE_DEVELOPER_ID_CERTIFICATE_BASE64",
-        "APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD",
-        "APPLE_CODESIGN_IDENTITY",
-        "APPLE_ID",
-        "APPLE_APP_SPECIFIC_PASSWORD",
-        "APPLE_TEAM_ID",
-    ] {
-        assert!(
-            workflow_text.contains(secret),
-            "release workflow must expose optional macOS signing secret {secret}"
-        );
-        assert!(
-            release_doc.contains(secret),
-            "docs/release.md must document macOS signing secret {secret}"
-        );
-    }
+    assert!(release_doc.contains("cargo publish --dry-run --locked"));
+    assert!(release_doc.contains("npm pack --dry-run"));
+    assert!(release_doc.contains("npm pack --pack-destination \"$packdir\""));
+    assert!(release_doc.contains("\"$packdir/$package_tarball\""));
+    assert!(release_doc.contains("does not upload unsigned binaries"));
+    assert_not_contains_any(
+        &workflow_text,
+        &[
+            "APPLE_DEVELOPER_ID_CERTIFICATE_BASE64",
+            "APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD",
+            "APPLE_CODESIGN_IDENTITY",
+            "APPLE_ID",
+            "APPLE_APP_SPECIFIC_PASSWORD",
+            "APPLE_TEAM_ID",
+            "actions/upload-artifact",
+            "actions/download-artifact",
+            "release-artifacts",
+        ],
+        "release workflow must not prepare unsigned binary assets",
+    );
     let signing_script =
         fs::read_to_string(manifest_dir.join("scripts/sign-macos-binary.sh")).unwrap();
     assert!(
@@ -630,75 +631,7 @@ fn release_workflow_uploads_documented_binary_artifacts() {
         "macOS signing script should decode certificates on both GNU and BSD/macOS base64"
     );
 
-    let steps = workflow["jobs"]["build"]["steps"].as_sequence().unwrap();
-    assert!(steps.iter().any(|step| step["run"]
-        .as_str()
-        .is_some_and(|run| run.contains("scripts/sign-macos-binary.sh"))));
-    assert!(steps.iter().any(|step| step["run"]
-        .as_str()
-        .is_some_and(|run| run.contains("scripts/package-release.sh"))));
-    let upload_step = steps
-        .iter()
-        .find(|step| {
-            step["uses"]
-                .as_str()
-                .is_some_and(|uses| uses == "actions/upload-artifact@v7")
-        })
-        .expect("release build job must upload per-target workflow artifacts");
-    assert_eq!(
-        upload_step["with"]["if-no-files-found"].as_str(),
-        Some("error")
-    );
-    assert_eq!(upload_step["with"]["retention-days"].as_i64(), Some(7));
-    let upload_paths = upload_step["with"]["path"].as_str().unwrap();
-    assert!(upload_paths.contains("any-switch-${{ github.ref_name }}-${{ matrix.target }}.tar.gz"));
-    assert!(upload_paths
-        .contains("any-switch-${{ github.ref_name }}-${{ matrix.target }}.tar.gz.sha256"));
-
     let publish_steps = workflow["jobs"]["publish"]["steps"].as_sequence().unwrap();
-    let download_step = publish_steps
-        .iter()
-        .find(|step| {
-            step["uses"]
-                .as_str()
-                .is_some_and(|uses| uses == "actions/download-artifact@v7")
-        })
-        .expect("release publish job must download built artifacts after all targets pass");
-    assert_eq!(
-        download_step["with"]["pattern"].as_str(),
-        Some("any-switch-${{ github.ref_name }}-*")
-    );
-    assert_eq!(
-        download_step["with"]["merge-multiple"].as_bool(),
-        Some(true)
-    );
-    let verify_artifacts = publish_steps
-        .iter()
-        .find(|step| {
-            step["name"]
-                .as_str()
-                .is_some_and(|name| name == "Verify release artifacts")
-        })
-        .and_then(|step| step["run"].as_str())
-        .expect("release publish job must verify every expected target artifact");
-    assert!(verify_artifacts
-        .contains(r#"test -f "release-artifacts/any-switch-${GITHUB_REF_NAME}-${target}.tar.gz""#));
-    assert!(verify_artifacts.contains(
-        r#"test -f "release-artifacts/any-switch-${GITHUB_REF_NAME}-${target}.tar.gz.sha256""#
-    ));
-    assert!(verify_artifacts.contains("cd release-artifacts"));
-    assert!(verify_artifacts.contains("command -v shasum"));
-    assert!(verify_artifacts
-        .contains(r#"shasum -a 256 -c "any-switch-${GITHUB_REF_NAME}-${target}.tar.gz.sha256""#));
-    assert!(verify_artifacts
-        .contains(r#"sha256sum -c "any-switch-${GITHUB_REF_NAME}-${target}.tar.gz.sha256""#));
-    for target in &targets {
-        assert!(
-            verify_artifacts.contains(target),
-            "publish job must include expected target {target} in its artifact verification loop"
-        );
-    }
-
     let release_step = publish_steps
         .iter()
         .find(|step| {
@@ -712,11 +645,6 @@ fn release_workflow_uploads_documented_binary_artifacts() {
         Some("softprops/action-gh-release@v3")
     );
     assert_eq!(
-        release_step["with"]["fail_on_unmatched_files"].as_bool(),
-        Some(true),
-        "release upload must fail if an expected artifact is missing"
-    );
-    assert_eq!(
         release_step["with"]["body_path"].as_str(),
         Some("CHANGELOG.md"),
         "GitHub Release notes must use the checked-in changelog so stage-release warnings are public"
@@ -725,9 +653,10 @@ fn release_workflow_uploads_documented_binary_artifacts() {
         release_step["with"].get("generate_release_notes").is_none(),
         "generated-only release notes can omit required manual-evidence scope warnings"
     );
-    let files = release_step["with"]["files"].as_str().unwrap();
-    assert!(files.contains("release-artifacts/*.tar.gz"));
-    assert!(files.contains("release-artifacts/*.tar.gz.sha256"));
+    assert!(
+        release_step["with"].get("files").is_none(),
+        "release workflow must not attach unsigned binary assets"
+    );
 }
 
 #[test]
@@ -965,11 +894,8 @@ fn release_archive_is_runtime_package_with_embedded_builtin_definitions() {
     assert!(apps.contains("codex\tSystem"));
 
     assert!(release_doc.contains("Built-in app definitions are compiled into the binary"));
-    assert!(release_doc.contains("archives do not need"));
+    assert!(release_doc.contains("source-build packages do not need"));
     assert!(release_doc.contains("`app_definitions/builtin/*.yaml`"));
-    assert!(
-        release_doc.contains("Development, contribution, design, acceptance, release, and manual")
-    );
 }
 
 #[test]

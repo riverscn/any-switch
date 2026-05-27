@@ -1,12 +1,12 @@
 name: Release checklist
-description: Track release evidence, artifacts, and publication notes.
+description: Track release evidence, package publication, and release notes.
 title: "[release]: v"
 labels: ["release"]
 body:
   - type: markdown
     attributes:
       value: |
-        Use this checklist before tagging or publishing a release. This records durable release evidence; it does not replace `scripts/verify-local.sh` or the GitHub Actions release workflow artifacts. Local ignored `manual-evidence-*.md` files are useful while preparing a release, but copy only their redacted conclusions or a maintainer-visible link here before relying on them. Do not paste secret values, OAuth capture blobs, API keys, Keychain values, or full local credential files.
+        Use this checklist before tagging or publishing a release. This records durable release evidence; it does not replace `scripts/verify-local.sh`, `cargo publish --dry-run`, or npm package verification. Local ignored `manual-evidence-*.md` files are useful while preparing a release, but copy only their redacted conclusions or a maintainer-visible link here before relying on them. Do not paste secret values, OAuth capture blobs, API keys, Keychain values, or full local credential files.
   - type: input
     id: version
     attributes:
@@ -62,15 +62,17 @@ body:
   - type: checkboxes
     id: artifacts
     attributes:
-      label: Artifacts
+      label: Packages
       options:
-        - label: "The tag matches the package version in `Cargo.toml`."
+        - label: "The tag matches the package version in `Cargo.toml` and `package.json`."
           required: true
-        - label: GitHub Actions produced Linux x86_64, macOS x86_64, macOS arm64, and Windows x86_64 archives.
+        - label: "`cargo publish --dry-run --locked` passed."
           required: true
-        - label: Archive checksums were verified after publication.
+        - label: "`npm pack --dry-run` contains source files needed for local Cargo compilation and no generated binary."
           required: true
-        - label: macOS signing/notarization status is recorded, or unsigned artifacts were intentionally accepted because signing secrets were absent.
+        - label: npm package installation was tested from the local tarball with a temporary npm cache/prefix.
+          required: true
+        - label: GitHub Release notes were published without unsigned prebuilt binary assets.
           required: true
   - type: checkboxes
     id: safety

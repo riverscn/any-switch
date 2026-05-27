@@ -34,44 +34,35 @@ only the declared targets, and avoids printing secret values.
 
 ## Install
 
-Download a release archive for your platform from GitHub Releases, then put the
-`any-switch` binary somewhere on your `PATH`.
-
-Current release archives are built for Linux x86_64, macOS Intel, macOS Apple
-Silicon, and Windows x86_64.
+The recommended installation path is source compilation through Cargo or npm.
+This avoids distributing unsigned macOS and Windows binaries.
 
 The current release scope is a macOS-evidenced stage release: macOS Claude
 OAuth import has real local evidence, while broader restart checks plus Linux
-and Windows real-app evidence are tracked as follow-up work. The Linux and
-Windows archives are still built and packaged by CI, but this release does not
-claim full `docs/design.md` section 13 coverage.
+and Windows real-app evidence are tracked as follow-up work. This release does
+not claim full `docs/design.md` section 13 coverage.
 
-Release archives are published with `.sha256` checksum files:
+Install Rust first:
 
 ```bash
-if command -v shasum >/dev/null 2>&1; then
-  shasum -a 256 -c any-switch-<tag>-<target>.tar.gz.sha256
-else
-  sha256sum -c any-switch-<tag>-<target>.tar.gz.sha256
-fi
-tar -xzf any-switch-<tag>-<target>.tar.gz
-./any-switch-<tag>-<target>/any-switch --version
+rustup toolchain install 1.95.0
 ```
 
-On Windows, verify the hash in PowerShell, then run `any-switch.exe` from the
-extracted archive:
+Then install with Cargo:
 
-```powershell
-$archive = ".\any-switch-<tag>-x86_64-pc-windows-msvc.tar.gz"
-$expected = ((Get-Content "${archive}.sha256") -split "\s+")[0].ToLowerInvariant()
-$actual = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant()
-if ($actual -ne $expected) { throw "checksum mismatch" }
-tar -xzf .\any-switch-<tag>-x86_64-pc-windows-msvc.tar.gz
-.\any-switch-<tag>-x86_64-pc-windows-msvc\any-switch.exe --version
+```bash
+cargo install any-switch --locked
 ```
 
-You can also build from source. The repository pins Rust `1.95.0` in
-`rust-toolchain.toml`, and Cargo metadata declares `rust-version = "1.95"`:
+You can also install through npm. The npm package compiles this Rust project
+locally with Cargo during installation:
+
+```bash
+npm install -g any-switch
+any-switch --version
+```
+
+For local development, build from a checkout:
 
 ```bash
 cargo install --path .

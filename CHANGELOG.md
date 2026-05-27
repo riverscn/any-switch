@@ -32,15 +32,11 @@ describe release-candidate scope rather than long-term compatibility guarantees.
   terminals can type `yes` at the prompt instead of passing `--yes`.
   `--assume-app-stopped` is rejected when no matching running process was
   detected, so it cannot be used as a preemptive default flag.
-- GitHub Actions release archives for Linux x86_64, macOS x86_64, macOS arm64,
-  and Windows x86_64, staged before publish and verified with checksums.
+- Distribution is source-build first through Cargo and npm. The npm package
+  compiles the Rust project locally with Cargo during installation; GitHub
+  Releases do not publish unsigned prebuilt macOS or Windows binaries.
 - Release workflow uses Node 24-compatible actions, checks tag/Cargo version
-  alignment, and publishes only after every target artifact is present.
-- Release packaging uses temporary staging and temporary archive/checksum files
-  before replacing final artifact names, making failed local packaging easier to
-  retry safely.
-- Optional macOS signing/notarization when GitHub release secrets are present;
-  missing signing secrets do not block unsigned artifacts.
+  alignment, and publishes release notes from the checked-in changelog.
 - Manual evidence helpers for Unix shells and Windows PowerShell generate
   redacted release-candidate evidence skeletons, including redaction for common
   JSON identity-name fields and Keychain account labels in diagnostic output.
