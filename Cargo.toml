@@ -41,7 +41,7 @@ libc = "0.2"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 serde_yaml = "0.9"
-sha2 = "0.10"
+sha2 = "0.11"
 thiserror = "1"
 toml_edit = { version = "0.22", features = ["serde"] }
 uuid = { version = "1", features = ["v7"] }
