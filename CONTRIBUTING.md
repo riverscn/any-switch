@@ -16,6 +16,10 @@ For the full local gate, prefer `scripts/verify-local.sh`; it adds shell syntax
 checks, patch whitespace checks, offline source-package verification, release
 archive packaging, and checksum verification.
 
+Before publishing or changing package contents, also run
+`scripts/verify-packages.sh`. It verifies the Cargo package list, npm tarball
+contents, and temporary installs from both Cargo and the packed npm tarball.
+
 The repository includes `.editorconfig` and `.gitattributes`; keep UTF-8, LF
 line endings, final newlines, and the documented indentation settings when
 editing non-Rust files. Rust formatting is enforced by `cargo fmt`, and
@@ -55,24 +59,26 @@ Before opening a pull request, run:
 
 ```bash
 scripts/verify-local.sh
+scripts/verify-packages.sh
 ```
 
-This is the Unix/macOS local gate and mirrors the main CI verification job.
-Windows-specific release behavior is covered by the `windows build` GitHub
-Actions job, which runs the Windows target checks, `scripts/manual-evidence.ps1
--Help`, and a Windows archive packaging smoke test. Dependabot updates for
-Cargo dependencies and GitHub Actions should pass those CI gates before merging.
+These are the Unix/macOS local gates and mirror the main CI verification plus
+the package verification job. Windows-specific release behavior is covered by
+the `windows build` GitHub Actions job, which runs the Windows target checks,
+`scripts/manual-evidence.ps1 -Help`, and a Windows archive packaging smoke
+test. Dependabot updates for Cargo dependencies and GitHub Actions should pass
+those CI gates before merging.
 
 ## Release Changes
 
 Release automation is defined in `.github/workflows/release.yml`. Tag releases
-with `vX.Y.Z`; the workflow builds Linux x86_64, macOS x86_64, macOS arm64, and
-Windows x86_64 archives, stages them as workflow artifacts, then publishes the
-complete set to the GitHub Release after every target succeeds.
+with `vX.Y.Z`; the workflow verifies the source-build release and publishes
+GitHub Release notes. It does not upload unsigned prebuilt macOS or Windows
+binaries as end-user installation artifacts.
 
 Changes that affect release packaging should keep `docs/release.md`,
-`docs/acceptance.md`, `scripts/package-release.sh`, and `tests/release.rs` in
-sync. The package script should keep staging and temporary archive files
-self-cleaning so failed local release checks can be rerun without manual
-directory cleanup. Windows release changes should also preserve the
-`scripts/manual-evidence.ps1 -Help` workflow check.
+`docs/acceptance.md`, `scripts/package-release.sh`,
+`scripts/verify-packages.sh`, and `tests/release.rs` in sync. Package scripts
+should keep staging and temporary files self-cleaning so failed local release
+checks can be rerun without manual directory cleanup. Windows release changes
+should also preserve the `scripts/manual-evidence.ps1 -Help` workflow check.

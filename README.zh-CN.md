@@ -239,6 +239,7 @@ any-switch apps validate ~/.any-switch/overrides.d/<app>.yaml
 
 ```bash
 scripts/verify-local.sh
+scripts/verify-packages.sh
 ```
 
 ## License

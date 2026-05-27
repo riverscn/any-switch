@@ -528,7 +528,10 @@ fn release_workflow_publishes_notes_without_unsigned_binary_artifacts() {
     let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let workflow_text =
         fs::read_to_string(manifest_dir.join(".github/workflows/release.yml")).unwrap();
+    let ci_workflow_text =
+        fs::read_to_string(manifest_dir.join(".github/workflows/ci.yml")).unwrap();
     let workflow: serde_yaml::Value = serde_yaml::from_str(&workflow_text).unwrap();
+    let ci_workflow: serde_yaml::Value = serde_yaml::from_str(&ci_workflow_text).unwrap();
     let release_doc = fs::read_to_string(manifest_dir.join("docs/release.md")).unwrap();
 
     assert!(workflow_text.contains("tags:"));
@@ -553,6 +556,15 @@ fn release_workflow_publishes_notes_without_unsigned_binary_artifacts() {
         workflow["jobs"]["publish"]["needs"].as_str(),
         Some("verify"),
         "publish job must wait for verification"
+    );
+    assert!(
+        workflow_text.contains("scripts/verify-packages.sh"),
+        "release verification must install-check Cargo and npm source packages"
+    );
+    assert!(
+        ci_workflow["jobs"].get("package-verify").is_some()
+            && ci_workflow_text.contains("scripts/verify-packages.sh"),
+        "CI must include package verification as an explicit job"
     );
 
     assert!(
@@ -604,10 +616,13 @@ fn release_workflow_publishes_notes_without_unsigned_binary_artifacts() {
             && manual_verification.contains("deferred full section 13 evidence items A, B, and C"),
         "docs/manual-verification.md must distinguish the current-stage blocker from deferred full-coverage experiments"
     );
+    let package_verify_script =
+        fs::read_to_string(manifest_dir.join("scripts/verify-packages.sh")).unwrap();
     assert!(release_doc.contains("cargo publish --dry-run --locked"));
-    assert!(release_doc.contains("npm pack --dry-run"));
-    assert!(release_doc.contains("npm pack --pack-destination \"$packdir\""));
-    assert!(release_doc.contains("\"$packdir/$package_tarball\""));
+    assert!(release_doc.contains("scripts/verify-packages.sh"));
+    assert!(package_verify_script.contains("npm pack --dry-run --json"));
+    assert!(package_verify_script.contains("npm pack --pack-destination"));
+    assert!(package_verify_script.contains("npm install -g --prefix"));
     assert!(release_doc.contains("does not upload unsigned binaries"));
     assert_not_contains_any(
         &workflow_text,

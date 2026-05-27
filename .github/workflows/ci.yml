@@ -26,6 +26,17 @@ jobs:
       - run: rustup toolchain install 1.95.0 --profile minimal --component rustfmt --component clippy
       - run: scripts/verify-local.sh
 
+  package-verify:
+    name: package verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install 1.95.0 --profile minimal
+      - run: node --version && npm --version
+      - run: scripts/verify-packages.sh
+
   windows-build:
     name: windows build
     runs-on: windows-latest

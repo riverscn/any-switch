@@ -35,6 +35,8 @@ jobs:
             exit 1
           fi
       - run: scripts/verify-local.sh
+      - run: node --version && npm --version
+      - run: scripts/verify-packages.sh
 
   publish:
     name: publish release

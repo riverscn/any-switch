@@ -309,6 +309,7 @@ Run the local verification script before opening a pull request:
 
 ```bash
 scripts/verify-local.sh
+scripts/verify-packages.sh
 ```
 
 ## License

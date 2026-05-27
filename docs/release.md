@@ -10,6 +10,7 @@ Run the same checks used by CI:
 
 ```bash
 scripts/verify-local.sh
+scripts/verify-packages.sh
 ```
 
 The repository pins the Rust toolchain in `rust-toolchain.toml`; run
@@ -21,6 +22,14 @@ Cargo source package offline, creates a temporary local runtime archive through
 archive path is retained for local smoke testing and future signed-binary work;
 it is not uploaded as the public release artifact in the current source-build
 distribution model.
+
+`scripts/verify-packages.sh` verifies the installable source packages. It checks
+the Cargo package file list, rejects local-only credential/evidence paths,
+installs the CLI through Cargo into a temporary root, packs the npm tarball,
+rejects package-only docs and local state paths, installs from the packed npm
+tarball into a temporary prefix, and verifies `any-switch --version` plus the
+built-in app list.
+
 If `pwsh` is installed locally, `scripts/verify-local.sh` also checks the
 PowerShell manual-evidence helper's help path. Windows CI always runs the
 PowerShell helper through Windows PowerShell.
@@ -151,12 +160,8 @@ Rust itself; users must install Rust first.
 Before publishing to npm:
 
 ```bash
-npm_config_cache=/private/tmp/any-switch-npm-cache npm pack --dry-run
-packdir=$(mktemp -d /private/tmp/any-switch-npm-pack.XXXXXX)
-package_tarball=$(npm_config_cache=/private/tmp/any-switch-npm-cache npm pack --pack-destination "$packdir" --silent)
-tmpdir=$(mktemp -d /private/tmp/any-switch-npm-prefix.XXXXXX)
-npm_config_cache=/private/tmp/any-switch-npm-cache npm install -g --prefix "$tmpdir" "$packdir/$package_tarball"
-"$tmpdir/bin/any-switch" --version
+scripts/verify-packages.sh
+npm_config_cache=/private/tmp/any-switch-npm-cache npm publish --dry-run
 ```
 
 ## Cargo Package
@@ -164,6 +169,7 @@ npm_config_cache=/private/tmp/any-switch-npm-cache npm install -g --prefix "$tmp
 Cargo is the primary Rust-native distribution path:
 
 ```bash
+scripts/verify-packages.sh
 cargo publish --dry-run --locked
 cargo publish --locked
 ```
