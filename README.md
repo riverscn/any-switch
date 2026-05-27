@@ -36,35 +36,48 @@ only the declared targets, and avoids printing secret values.
 
 ## Install
 
-The recommended installation path is source compilation through Cargo or npm.
-This avoids distributing unsigned macOS and Windows binaries.
+`any-switch` is distributed as a source-built CLI. The install command compiles
+the Rust binary on your machine instead of downloading an unsigned macOS or
+Windows binary.
 
 The current release scope is a macOS-evidenced stage release: macOS Claude
 OAuth import has real local evidence, while broader restart checks plus Linux
 and Windows real-app evidence are tracked as follow-up work. This release does
 not claim full `docs/design.md` section 13 coverage.
 
-Install Rust first:
+### 1. Install Rust
 
 ```bash
 rustup toolchain install 1.95.0
 ```
 
-Then install with Cargo:
+If `rustup` is not installed yet, install Rust from <https://rustup.rs> first.
 
-```bash
-cargo install any-switch --locked
-```
+### 2. Install any-switch
 
-You can also install through npm. The npm package compiles this Rust project
-locally with Cargo during installation:
+For most npm-based CLI users:
 
 ```bash
 npm install -g any-switch
 any-switch --version
 ```
 
-For local development, build from a checkout:
+The first npm install can take a little while because it runs Cargo once and
+stores the compiled binary inside the npm package. After that, run
+`any-switch` directly.
+
+For Rust users:
+
+```bash
+cargo install any-switch --locked
+any-switch --version
+```
+
+`npx any-switch --version` can work for a quick trial, but it may compile on
+first use and may compile again if npm's cache is cleared. Prefer a global
+install for regular use.
+
+For local development from a checkout:
 
 ```bash
 cargo install --path .

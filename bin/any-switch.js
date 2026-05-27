@@ -27,7 +27,8 @@ if (!fs.existsSync(binaryPath)) {
 }
 
 const result = childProcess.spawnSync(binaryPath, process.argv.slice(2), {
-  stdio: "inherit"
+  stdio: "inherit",
+  shell: false
 });
 
 if (result.error) {

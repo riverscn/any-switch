@@ -23,7 +23,7 @@
 
 当前版本是 macOS-evidenced stage release。macOS Claude OAuth import 有真实本机证据；更完整的重启检查，以及 Linux 和 Windows 的真实应用证据仍作为后续工作跟踪。在这些完成前，项目不会声明完整覆盖 `docs/design.md` 第 13 节。
 
-推荐通过 Cargo 或 npm 从源码编译安装。这样可以避免分发未签名的 macOS 和 Windows 二进制文件。
+`any-switch` 是源码构建型 CLI。安装命令会在你的机器上编译 Rust 二进制，而不是下载未签名的 macOS 或 Windows 二进制文件。
 
 先安装 Rust 工具链：
 
@@ -31,20 +31,27 @@
 rustup toolchain install 1.95.0
 ```
 
-使用 Cargo 安装：
+如果你还没有安装 `rustup`，请先从 <https://rustup.rs> 安装 Rust。
 
-```bash
-cargo install any-switch --locked
-```
-
-也可以使用 npm 安装。npm 包会在安装时通过 Cargo 在本机编译这个 Rust 项目：
+对大多数习惯 npm CLI 的用户：
 
 ```bash
 npm install -g any-switch
 any-switch --version
 ```
 
-本地开发时，可以从 checkout 直接安装：
+第一次 npm 安装可能会花一点时间，因为它会运行一次 Cargo，并把编译好的二进制放进 npm 包目录。之后直接运行 `any-switch` 即可。
+
+对 Rust 用户：
+
+```bash
+cargo install any-switch --locked
+any-switch --version
+```
+
+`npx any-switch --version` 可以用于快速试用，但首次使用可能会编译；如果 npm cache 被清理，也可能再次编译。日常使用建议全局安装。
+
+从 checkout 做本地开发时：
 
 ```bash
 cargo install --path .

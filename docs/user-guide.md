@@ -32,8 +32,9 @@ import has real local evidence; broader restart checks plus Linux and Windows
 real-app evidence are tracked as follow-up work before the project claims full
 `docs/design.md` section 13 coverage.
 
-The recommended installation path is source compilation through Cargo or npm.
-This avoids distributing unsigned macOS and Windows binaries.
+`any-switch` is distributed as a source-built CLI. The install command compiles
+the Rust binary on your machine instead of downloading an unsigned macOS or
+Windows binary.
 
 Install Rust first:
 
@@ -41,21 +42,31 @@ Install Rust first:
 rustup toolchain install 1.95.0
 ```
 
-Install with Cargo:
+If `rustup` is not installed yet, install Rust from <https://rustup.rs> first.
 
-```bash
-cargo install any-switch --locked
-```
-
-Or install through npm. The npm package compiles this Rust project locally with
-Cargo during installation:
+For most npm-based CLI users:
 
 ```bash
 npm install -g any-switch
 any-switch --version
 ```
 
-For local development, build from a checkout:
+The first npm install can take a little while because it runs Cargo once and
+stores the compiled binary inside the npm package. After that, run
+`any-switch` directly.
+
+For Rust users:
+
+```bash
+cargo install any-switch --locked
+any-switch --version
+```
+
+`npx any-switch --version` can work for a quick trial, but it may compile on
+first use and may compile again if npm's cache is cleared. Prefer a global
+install for regular use.
+
+For local development from a checkout:
 
 ```bash
 cargo install --path .

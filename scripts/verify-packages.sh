@@ -43,6 +43,7 @@ require_line "src/main.rs" "${cargo_package_list}"
 require_line "README.md" "${cargo_package_list}"
 require_line "README.zh-CN.md" "${cargo_package_list}"
 reject_pattern '(^|/)(\.any-switch|\.claude|\.codex|\.smoke-|\.tmp)(/|$)' "${cargo_package_list}"
+reject_pattern '^vendor/' "${cargo_package_list}"
 reject_pattern '^manual-evidence-[^/]*\.md$' "${cargo_package_list}"
 reject_pattern '(^|/)(auth|credentials?)\.json$' "${cargo_package_list}"
 cargo package --locked --allow-dirty --offline
@@ -78,6 +79,7 @@ require_line "package/package.json" "${npm_package_list}"
 require_line "package/Cargo.toml" "${npm_package_list}"
 require_line "package/src/main.rs" "${npm_package_list}"
 reject_pattern '^package/docs/' "${npm_package_list}"
+reject_pattern '^package/vendor/' "${npm_package_list}"
 reject_pattern '(^|/)(\.any-switch|\.claude|\.codex|\.smoke-|\.tmp)(/|$)' "${npm_package_list}"
 reject_pattern '^package/manual-evidence-[^/]*\.md$' "${npm_package_list}"
 reject_pattern '(^|/)(auth|credentials?)\.json$' "${npm_package_list}"
@@ -88,3 +90,8 @@ npm_config_cache="${npm_cache}" npm install -g --prefix "${npm_prefix}" "${npm_t
 "${npm_prefix}/bin/any-switch" --version | grep -Fx "any-switch ${version}"
 ANY_SWITCH_HOME="${state_root}/npm-home" "${npm_prefix}/bin/any-switch" apps | grep -Eq '(^|[[:space:]])claude([[:space:]]|$)'
 ANY_SWITCH_HOME="${state_root}/npm-home" "${npm_prefix}/bin/any-switch" apps | grep -Eq '(^|[[:space:]])codex([[:space:]]|$)'
+
+echo "==> verifying npx execution from packed tarball"
+npm_config_cache="${npm_cache}" npx --yes --package "${npm_tarball_path}" any-switch --version | grep -Fx "any-switch ${version}"
+ANY_SWITCH_HOME="${state_root}/npx-home" npm_config_cache="${npm_cache}" npx --yes --package "${npm_tarball_path}" any-switch apps | grep -Eq '(^|[[:space:]])claude([[:space:]]|$)'
+ANY_SWITCH_HOME="${state_root}/npx-home" npm_config_cache="${npm_cache}" npx --yes --package "${npm_tarball_path}" any-switch apps | grep -Eq '(^|[[:space:]])codex([[:space:]]|$)'

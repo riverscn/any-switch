@@ -24,7 +24,7 @@ function run(command, args) {
   const result = childProcess.spawnSync(command, args, {
     cwd: root,
     stdio: "inherit",
-    shell: process.platform === "win32"
+    shell: false
   });
   if (result.error) {
     throw result.error;

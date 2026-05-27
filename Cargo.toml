@@ -24,6 +24,7 @@ exclude = [
     ".tmp/**",
     ".tmp-*",
     ".tmp-*/**",
+    "/vendor/**",
     "/manual-evidence-*.md",
 ]
 
